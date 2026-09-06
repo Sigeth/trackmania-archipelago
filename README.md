@@ -37,22 +37,22 @@ the wire.
 
 ## Packaging
 
-Releases are automated. Conventional-commit pushes to `main` let
-[release-please](https://github.com/googleapis/release-please) open a release PR;
-merging it tags `vX.Y.Z` and the `release-please` workflow attaches two assets to
-the GitHub Release:
+Releases are automated with
+[semantic-release](https://github.com/semantic-release/semantic-release). Every
+conventional-commit push to `main` is analysed; when a release is due it bumps
+the version, updates `CHANGELOG.md`, tags `vX.Y.Z`, and publishes a GitHub
+Release with two assets:
 
 - `Archipelago.op` — the Openplanet plugin (`info.toml` + `src/` zipped).
 - `trackmania_turbo.apworld` — the matching Archipelago world (from `apworld/`).
 
-Both carry the same version. The version stays in `0.x` for features and fixes;
-the first `feat!:` / `BREAKING CHANGE:` commit bumps it to `1.0.0`.
+Both carry the same version. It stays in `0.x` for `feat:` / `fix:`; the first
+`feat!:` / `BREAKING CHANGE:` commit bumps it to `1.0.0`.
 
 Publishing the `.op` to [openplanet.dev](https://openplanet.dev) is still a manual
 upload — download it from the Release and upload it on the site.
 
-To build a `.op` by hand: zip the folder contents (with `info.toml` at the root)
-and rename to `Archipelago.op`.
+To build both artifacts by hand: `bash tools/package.sh` → `dist/`.
 
 ## The `apworld/` folder
 
@@ -89,7 +89,7 @@ These strings must match on both sides:
   - `ui/Window.as` — status window.
 - `apworld/` — the Archipelago world (Python), shipped and released alongside the
   plugin; never part of `Archipelago.op`.
-- `tools/lint.py` — static checks for the `.as` sources (no compiler exists
-  outside Openplanet); run by CI.
+- `tools/` — `lint.py` (static checks for the `.as` sources; no compiler exists
+  outside Openplanet), `bump_version.py`, `package.sh`. All run by CI.
 - `.github/workflows/` — `ci.yml` (lint + apworld tests + package check on every
-  push and weekly), `release-please.yml` (release PR, tag, and asset publishing).
+  push and weekly), `release.yml` (semantic-release: tag + Release + assets).

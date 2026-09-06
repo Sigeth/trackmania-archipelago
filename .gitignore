@@ -8,6 +8,10 @@
 __pycache__/
 *.py[cod]
 
+# semantic-release (CI installs these ad hoc)
+node_modules/
+package-lock.json
+
 # Editor / OS
 .vscode/
 .idea/

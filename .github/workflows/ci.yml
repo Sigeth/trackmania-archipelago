@@ -25,10 +25,11 @@ jobs:
       - name: Static checks (tools/lint.py)
         run: python tools/lint.py
 
-      - name: Trial-package the .op
+      - name: Trial-package both artifacts
         run: |
-          zip -r /tmp/Archipelago.op info.toml src -x '*.DS_Store'
-          unzip -l /tmp/Archipelago.op
+          bash tools/package.sh
+          unzip -l dist/Archipelago.op
+          unzip -l dist/trackmania_turbo.apworld
 
   apworld:
     name: apworld — tests + generate

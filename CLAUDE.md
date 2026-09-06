@@ -44,19 +44,24 @@ Style: 4-space indent, `PascalCase` methods, `m_` private fields, `S_` settings,
   `apworld/trackmania_turbo/archipelago.json` `world_version`, and that world's
   `__init__.py` `__version__` are kept identical — `tools/lint.py` (run by CI)
   fails the build if they drift.
-- **release-please** (`.github/workflows/release-please.yml`, config in
-  `release-please-config.json` + `.release-please-manifest.json`) reads the
-  conventional-commit log on `main`, opens a "release X.Y.Z" PR that bumps all
-  three version spots + `CHANGELOG.md`; merging it tags `vX.Y.Z` and the `publish`
-  job attaches `Archipelago.op` (`info.toml` + `src/`) and
-  `trackmania_turbo.apworld` (the `apworld/trackmania_turbo/` folder, minus
-  `test/` and `__pycache__`) to the Release.
+- **semantic-release** (`.github/workflows/release.yml` + `.releaserc.json`) runs
+  on every push to `main`: analyses the conventional-commit log and, when a
+  release is due, runs `tools/bump_version.py` (the three version spots),
+  regenerates `CHANGELOG.md`, runs `tools/package.sh`, commits the bumped files
+  back to `main` (`chore(release): … [skip ci]`), tags `vX.Y.Z`, and publishes a
+  GitHub Release with `dist/Archipelago.op` (`info.toml` + `src/`) and
+  `dist/trackmania_turbo.apworld` (the `apworld/trackmania_turbo/` folder, minus
+  `test/` / `__pycache__`).
 - Pre-1.0: `feat:` → minor, `fix:` → patch, `feat!:` / `BREAKING CHANGE:` →
   `1.0.0`. So use `!` deliberately — it is the trigger for the first major.
-- The manifest is seeded at `0.0.0`, so the first release PR release-please opens
-  is `0.1.0` (feat commits in history → one minor bump). After that it tracks the
-  real released version. `info.toml` / `archipelago.json` / `__init__.py` already
-  read `0.1.0`; release-please rewrites them on each release.
+- A `v0.0.0` tag (at commit `d38a069`) is the baseline, so the first release
+  semantic-release cuts is `0.1.0`.
+- No release PRs, so it does **not** need the "allow Actions to create pull
+  requests" repo setting that blocked release-please — only "Read and write
+  permissions" under Settings > Actions > General. If `main` becomes a protected
+  branch that blocks the Actions bot's push, drop `@semantic-release/git` from
+  `.releaserc.json` (tag + Release still publish; only the bump-back commit is
+  lost).
 - `ci.yml` runs on every push/PR (and weekly, Mon 06:00 UTC):
   - `plugin` job — `tools/lint.py` then trial-zips the `.op`.
   - `apworld` job — resolves `apworld/.ap-version` (`stable` → the latest

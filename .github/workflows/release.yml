@@ -1,0 +1,57 @@
+name: release
+
+# semantic-release: on every push to main it analyses the conventional-commit
+# log, and when a release is warranted it bumps the version, updates CHANGELOG.md,
+# tags vX.Y.Z, commits the bumped files back to main ([skip ci]), and publishes a
+# GitHub Release with Archipelago.op + trackmania_turbo.apworld attached.
+#
+# Versioning: a v0.0.0 baseline tag seeds it, so the first release is 0.1.0. It
+# stays 0.x for feat/fix; a commit with "!" or a "BREAKING CHANGE:" footer bumps
+# to 1.0.0.
+#
+# Needs: "Read and write permissions" under Settings > Actions > General. Unlike
+# release-please it does NOT need "allow Actions to create pull requests". If main
+# is a protected branch that blocks the Actions bot, drop @semantic-release/git
+# from .releaserc.json (the tag + Release still publish; only the version-bump
+# commit is skipped).
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: semantic-release
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          extra_plugins: |
+            @semantic-release/changelog@6
+            @semantic-release/exec@6
+            @semantic-release/git@10
+            conventional-changelog-conventionalcommits@8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
