@@ -1,5 +1,10 @@
 name: release-please
 
+# Requires repo setting: Settings > Actions > General > Workflow permissions >
+# "Allow GitHub Actions to create and approve pull requests" (checked).
+# Otherwise release-please fails with "GitHub Actions is not permitted to create
+# or approve pull requests". Alternatively pass a PAT via the action's `token:`.
+
 on:
   push:
     branches: [main]
