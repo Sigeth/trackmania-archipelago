@@ -31,6 +31,38 @@ jobs:
           unzip -l dist/Archipelago.op
           unzip -l dist/trackmania_turbo.apworld
 
+  angelscript:
+    name: angelscript — compile + unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # AngelScript is fetched by CMake (FetchContent). Cache the build tree —
+      # keyed on the host sources + the pinned AngelScript commit in CMakeLists —
+      # so most runs just relink.
+      - name: Cache asrun build
+        uses: actions/cache@v4
+        with:
+          path: tools/as/build
+          key: asrun-${{ runner.os }}-${{ hashFiles('tools/as/CMakeLists.txt', 'tools/as/host/**') }}
+
+      - name: Generate the Openplanet stub surface
+        run: python tools/as/gen_stubs.py
+
+      - name: Build asrun
+        run: |
+          cmake -S tools/as -B tools/as/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build tools/as/build --config Release --parallel
+
+      - name: Compile gate (src/**.as)
+        run: tools/as/build/asrun --compile src
+
+      - name: Unit tests
+        run: tools/as/build/asrun --test src tools/as/tests
+
   apworld:
     name: apworld — tests + generate
     runs-on: ubuntu-latest

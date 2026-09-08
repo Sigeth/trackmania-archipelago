@@ -4,6 +4,11 @@
 /build/
 /dist/
 
+# AngelScript checker (tools/as): build tree + generated stub (regenerated from api/*.json)
+tools/as/build/
+tools/as/generated/
+*.obj
+
 # Python
 __pycache__/
 *.py[cod]

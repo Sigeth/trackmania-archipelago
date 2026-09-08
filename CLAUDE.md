@@ -64,19 +64,28 @@ Style: 4-space indent, `PascalCase` methods, `m_` private fields, `S_` settings,
   lost).
 - `ci.yml` runs on every push/PR (and weekly, Mon 06:00 UTC):
   - `plugin` job — `tools/lint.py` then trial-zips the `.op`.
+  - `angelscript` job — `gen_stubs.py`, build `tools/as` (CMake fetches
+    AngelScript), then `asrun --compile src` + `asrun --test src tools/as/tests`.
   - `apworld` job — resolves `apworld/.ap-version` (`stable` → the latest
     non-prerelease Archipelago release, i.e. what archipelago.gg hosts on; or an
     explicit `X.Y.Z` pin), checks that core out, drops the world in, runs
     `pytest worlds/trackmania_turbo/test test/general -k Trackmania` + a
     `Generate.py` smoke. The weekly run is what catches a new stable core
     release breaking the world with no commit here.
-- **No AngelScript compiler in CI.** Openplanet compiles `src/**.as` at load and
-  there is no standalone/headless Openplanet-AngelScript compiler (the
-  vscode-openplanet-angelscript / angel-lsp language servers are editor-only).
-  `tools/lint.py` is the substitute: bracket balance (a guaranteed load failure),
-  UTF-8 / LF / tab / trailing-whitespace hygiene, `info.toml` shape, the 3-way
-  version check, and warns on documented API traps (`Draw::`, `Net::WebSocket`
-  outside `Transport.as`). A real compile still only happens on `Reload plugin`.
+- **AngelScript compile + unit tests — `tools/as/`.** There is no standalone
+  Openplanet compiler, so `tools/as/` builds one: a C++ host (`asrun`) links the
+  real AngelScript library, registers a generated stub of the whole Openplanet
+  API (from the `api/*.json` dumps) plus working `string`/`array`/`dictionary`/
+  `Json`, and compiles `src/**.as` as one module — a genuine type-check.
+  `asrun --compile src` is the gate; `asrun --test src tools/as/tests` runs the
+  `Test_*` unit tests (TrackTable, Protocol, DataPackage). CI job `angelscript`;
+  local `pwsh tools/as/check.ps1`. It catches renamed members / wrong signatures
+  / undeclared names / bad returns, but the stubs are script classes not the
+  registered interface — `Transport`/`GameState`/UI are compile-only, and a real
+  compile still only happens on `Reload plugin`. See `tools/as/README.md`.
+- `tools/lint.py` still runs first for text hygiene (UTF-8 / LF / tab / trailing
+  whitespace), `info.toml` shape, the 3-way version check, and the documented
+  API-trap warnings (`Draw::`, `Net::WebSocket` outside `Transport.as`).
 - Openplanet-registry upload of the `.op` stays manual.
 
 ## Architecture

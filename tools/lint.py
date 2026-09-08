@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Static checks for the Openplanet plugin + apworld.
 
-This is NOT a compiler. Openplanet compiles the AngelScript at plugin load and
-there is no standalone Openplanet-AngelScript compiler (the language server in
-XertroV/vscode-openplanet-angelscript and sashi0034/angel-lsp are editor-only,
-no headless mode). What this catches:
+This is NOT a compiler -- `tools/as/` is (a real AngelScript type-check of
+`src/**.as`; run `pwsh tools/as/check.ps1` or the `angelscript` CI job). This
+script is the fast first pass: text hygiene, manifest shape, version agreement,
+and the documented API-trap warnings. What it catches:
 
   errors (exit 1):
     * unbalanced () [] {} in a .as file  -- a guaranteed load failure
