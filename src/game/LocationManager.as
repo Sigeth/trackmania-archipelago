@@ -1,11 +1,10 @@
 // Turns game achievements into Archipelago location checks.
 //
-// A "location" in this apworld is one (track, medal-tier) pair, plus -- in the
-// vanilla unlock style -- "<Block> Complete" (x20) and "<Tier> Complete" (x5)
-// milestones. The mapping between a Turbo map and its AP location name lives in
-// TrackTable.as; this class resolves those names to ids via the server data
-// package and tracks which checks have already been sent so we never
-// double-report.
+// A "location" in this apworld is one (track, medal-tier) pair, plus
+// "<Block> Complete" (x20) and "<Tier> Complete" (x5) milestones. The mapping
+// between a Turbo map and its AP location name lives in TrackTable.as; this
+// class resolves those names to ids via the server data package and tracks
+// which checks have already been sent so we never double-report.
 //
 // A bare finish (crossing the line with no medal) is NOT a check. We record it
 // in m_finishedTracks (persisted per seed): that set drives the milestone checks
@@ -22,8 +21,9 @@ class LocationManager {
                                          // (checked + missing). The data package name
                                          // map is the whole-game universe, so a name
                                          // resolving to an id does not mean the slot
-                                         // has that location -- vanilla seeds only
-                                         // define Gold + Author + milestones.
+                                         // has that location -- a seed only defines
+                                         // the medal tiers at/above its floor
+                                         // (default Gold + Author) plus milestones.
 
     private dictionary m_finishedTracks; // trackLabel -> true (any completion)
 

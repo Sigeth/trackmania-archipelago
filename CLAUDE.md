@@ -212,7 +212,7 @@ the online Openplanet docs describe the newer TM2020 build.
 | `src/game/GameState.as` | Reads the Turbo nods; emits `FinishEvent` on a race finish; bounces the player out of locked tracks |
 | `src/game/TrackTable.as` | Campaign map number (1–200) ⇄ `"<Tier> <Env> NN"` label |
 | `src/game/LocationManager.as` | finish → location id; dedupe; batched send; per-track checked-medal mask |
-| `src/game/ItemManager.as` | consumes `ReceivedItems`; client-enforced unlock set; per-seed persistence |
+| `src/game/ItemManager.as` | consumes `ReceivedItems`; counts `<grade> Medal` items; client-enforced 20-block unlock gate |
 | `src/ui/Window.as` | Status window + `RenderMenu()` entry + chat panel (log view + input; sends `Say`) |
 | `src/ui/CampaignOverlay.as` | `Render()` — nvg lock / medal-pip markers on the series grid *and* the per-series track picker |
 
@@ -227,24 +227,23 @@ If you change one of these, change it on both sides.
   Campaign map number 1..200 → these difficulty-major, then environment, then NN
   (`TrackLabel` in `TrackTable.as`).
 - Location: `"<Track Label> - <Medal>"`, e.g. `"White Canyon 01 - Gold"`.
-  Medal ∈ {Bronze, Silver, Gold, Author}. Vanilla seeds only define Gold + Author.
-- Milestone locations (vanilla): `"<Tier> <Env> Complete"` (×20, all 10 tracks of
-  a block finished) and `"<Tier> Complete"` (×5, all 40 of a tier). A bare finish
+  Medal ∈ {Bronze, Silver, Gold, Author}. A seed only defines the tiers at/above
+  the `medals_required` floor (default Gold → Gold + Author).
+- Milestone locations: `"<Tier> <Env> Complete"` (×20, all 10 tracks of a block
+  finished) and `"<Tier> Complete"` (×5, all 40 of a tier). A bare finish
   (no medal) is **not** a check — the plugin tracks it locally
   (`LocationManager.m_finishedTracks`, persisted `seed-<name>-finished.json`) to
   drive the milestones and the `campaign_finish` goal.
-- Track-unlock item: `"Unlock: <Track Label>"` (individual style).
-- Progressive-unlock item: `"Progressive <Tier>"` — unlocks that tier's 40 tracks
-  in campaign order (Canyon 01..10, Valley 01..10, Lagoon 01..10, Stadium 01..10).
-- Medal item (vanilla): `"Bronze Medal"` / `"Silver Medal"` / `"Gold Medal"` — the
+- Medal item: `"Bronze Medal"` / `"Silver Medal"` / `"Gold Medal"` — the
   randomised progression. Block `i` (10 tracks in campaign order,
   `i = tier*4 + env`, 0..19) opens once the received count of the block-grade
   medal (`Bronze i<8`, `Silver i<16`, `Gold i≥16`) reaches `block_thresholds[i]`
   (`= 10*i`, block 0 always open). Once a block is open, finishing a track sends
   whatever medal the player earned — no licence gate.
-- `slot_data`: `unlock_style` ∈ {vanilla, progressive, individual};
-  `goal` ∈ {campaign_finish, author_times}; `block_thresholds` (20 ints).
-  `S_UnlockStyle` (Auto/ForceItems/ForceVanilla) overrides `unlock_style` locally.
+- `slot_data`: `unlock_style` (always `"vanilla"`), `goal` (always
+  `"campaign_finish"`) — still sent, plugin warns on anything else;
+  `block_thresholds` (20 ints); `medals_required` (`bronze|silver|gold|author`,
+  the per-track check floor).
 
 ## Open items
 
@@ -255,13 +254,13 @@ If you change one of these, change it on both sides.
   player loads a locked campaign map (`S_BlockLockedTracks`) — confirmed it lands
   cleanly and writes no time. Only remaining: the grid-rect / picker-slot
   calibration is per-resolution (re-tune with the Debug sliders on other setups).
-- **Goal condition — done.** `ItemManager.CheckGoal()` reads `slot_data.goal`;
-  `campaign_finish` fires at `LocationManager.FinishedCountAll() >= 200`.
-  `author_times` is a stub for a later "super solo" mode.
-- **Vanilla unlock mode — implemented, pending in-game test.** `S_UnlockStyle`
-  enum + `ItemManager.VanillaMode()` / `IsTrackUnlocked` block branch /
-  `HasLicense`; `LocationManager` milestones + `m_finishedTracks` persistence;
-  `GameState` now emits `FinishEvent` on a **no-medal finish** too
+- **Goal condition — done.** One goal: `campaign_finish` fires at
+  `LocationManager.FinishedCountAll() >= 200`. `ItemManager.CheckGoal()` warns
+  if `slot_data.goal` is anything else.
+- **Unlock mode — one model (retail-style block gate), pending in-game test.**
+  `ItemManager` counts `<grade> Medal` items and opens the 20 blocks from
+  `slot_data.block_thresholds`; `LocationManager` milestones + `m_finishedTracks`
+  persistence; `GameState` emits `FinishEvent` on a **no-medal finish** too
   (`FinishEvent.medal` may be `Medal(0)`). VERIFY in-game: a sub-Bronze run still
   reaches `RaceState == Finished` with a readable time; blocks unlock as medal
   items land; milestone checks fire; reconnect rebuilds the finished set.

@@ -102,20 +102,18 @@ void RenderProgress() {
     UI::ProgressBar(frac, vec2(-1, 0), loc.CheckedCount + " / " + loc.TotalCount + " checks");
     UI::Text("Tracks unlocked: " + items.UnlockedTrackCount());
 
-    if (items.VanillaMode()) {
-        UI::Text("Medals  \\$c94B:" + items.MedalCount(Medal::Bronze)
-                 + "  \\$bbbS:" + items.MedalCount(Medal::Silver)
-                 + "  \\$fd4G:" + items.MedalCount(Medal::Gold));
-        UI::Text("Finished: " + loc.FinishedCountAll() + " / 200");
-        int nextBlock = FirstLockedBlock();
-        if (nextBlock >= 0) {
-            Medal g = BlockGrade(nextBlock);
-            int need = items.BlockThreshold(nextBlock) - items.MedalCount(g);
-            UI::Text("Next: " + BlockName(nextBlock) + "  (need " + need + " more "
-                     + MEDAL_SUFFIX[int(g)] + ")");
-        } else {
-            UI::Text("\\$3f3All 20 blocks unlocked");
-        }
+    UI::Text("Medals  \\$c94B:" + items.MedalCount(Medal::Bronze)
+             + "  \\$bbbS:" + items.MedalCount(Medal::Silver)
+             + "  \\$fd4G:" + items.MedalCount(Medal::Gold));
+    UI::Text("Finished: " + loc.FinishedCountAll() + " / 200");
+    int nextBlock = FirstLockedBlock();
+    if (nextBlock >= 0) {
+        Medal g = BlockGrade(nextBlock);
+        int need = items.BlockThreshold(nextBlock) - items.MedalCount(g);
+        UI::Text("Next: " + BlockName(nextBlock) + "  (need " + need + " more "
+                 + MEDAL_SUFFIX[int(g)] + ")");
+    } else {
+        UI::Text("\\$3f3All 20 blocks unlocked");
     }
 
     string labelName = g_gameState !is null ? g_gameState.CurrentTrackLabel : "";

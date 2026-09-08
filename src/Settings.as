@@ -19,12 +19,6 @@ string S_Password = "";
 [Setting category="Connection" name="Auto-connect on plugin load"]
 bool S_AutoConnect = false;
 
-[Setting category="Behaviour" name="Unlock style (Auto = follow the seed)"]
-UnlockStylePref S_UnlockStyle = UnlockStylePref::Auto;
-
-[Setting category="Behaviour" name="Medal required to check a track location (item styles only)"]
-Medal S_RequiredMedal = Medal::Gold;
-
 [Setting category="Behaviour" name="Report goal complete automatically"]
 bool S_AutoGoal = true;
 
@@ -58,17 +52,6 @@ enum Medal {
     Silver = 2,
     Gold   = 3,
     Author = 4,
-}
-
-// How the plugin decides which tracks are unlocked.
-//   Auto         -- follow slot_data.unlock_style ("vanilla" -> medal-count
-//                   blocks; anything else -> item-driven unlock set)
-//   ForceItems   -- always use the item-driven unlock set
-//   ForceVanilla -- always use the vanilla medal-count blocks
-enum UnlockStylePref {
-    Auto = 0,
-    ForceItems = 1,
-    ForceVanilla = 2,
 }
 
 string ServerUrl() {

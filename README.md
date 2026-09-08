@@ -9,7 +9,8 @@ Archipelago server; **items** received from the multiworld unlock campaign track
 
 > Status: early but working. A full round trip is verified end to end — connect,
 > data package, finish a track in-game, location check sent, item routed back.
-> Track-lock enforcement UX and the fuller item/goal set are still to come.
+> One unlock model (retail-style medal-block gating) and one goal
+> (`campaign_finish`); `medals_required` picks the check floor.
 
 ## Requirements
 
@@ -72,9 +73,11 @@ These strings must match on both sides:
   Track label is `<Tier> <Environment> NN` — Tier ∈ {White, Green, Blue, Red,
   Black}, Environment ∈ {Canyon, Valley, Lagoon, Stadium}, NN = 01..10 (200
   tracks). Medal ∈ {Bronze, Silver, Gold, Author}.
-- Progressive-unlock item: `Progressive <Tier>` (unlocks that tier's 40 tracks in
-  campaign order).
-- Individual-unlock item: `Unlock: <Track Label>`.
+- Milestone locations: `<Tier> <Env> Complete` (×20), `<Tier> Complete` (×5).
+- Medal item: `Bronze Medal` / `Silver Medal` / `Gold Medal` — the randomised
+  progression; block `i` opens at `10·i` received items of its grade.
+- `slot_data`: `unlock_style` (`"vanilla"`), `goal` (`"campaign_finish"`),
+  `block_thresholds` (20 ints), `medals_required`.
 
 ## Layout
 

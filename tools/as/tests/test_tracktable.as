@@ -31,14 +31,6 @@ void Test_label_roundtrips_all_200() {
     AssertEq(CampaignNumberFromLabel("White Desert 01"), 0, "bad env");
 }
 
-void Test_TierTrackLabel() {
-    AssertEq(TierTrackLabel("White", 1),  "White Canyon 01", "first white");
-    AssertEq(TierTrackLabel("White", 11), "White Valley 01", "11th white");
-    AssertEq(TierTrackLabel("Black", 40), "Black Stadium 10", "last black");
-    AssertEq(TierTrackLabel("White", 41), "", "past tier");
-    AssertEq(TierTrackLabel("Nope", 1),   "", "bad tier");
-}
-
 void Test_TrackLocationName() {
     AssertEq(TrackLocationName("White Canyon 01", Medal::Gold),   "White Canyon 01 - Gold");
     AssertEq(TrackLocationName("Black Stadium 10", Medal::Author), "Black Stadium 10 - Author");

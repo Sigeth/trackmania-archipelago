@@ -2,14 +2,13 @@ from . import TrackmaniaTurboTestBase
 
 
 class TestVanillaDefault(TrackmaniaTurboTestBase):
-    """Default YAML -> unlock_style: vanilla."""
+    """Default YAML -> medals_required: gold."""
 
     def test_id_map_universe(self):
         # The id map is the stable universe: 200 tracks x 4 medal tiers + 20
-        # block milestones + 5 tier milestones; items are 5 Progressive + filler
-        # + 3 medal items.
+        # block milestones + 5 tier milestones; items are filler + 3 medal items.
         self.assertEqual(len(self.world.location_name_to_id), 200 * 4 + 20 + 5)
-        self.assertEqual(len(self.world.item_name_to_id), 5 + 1 + 3)
+        self.assertEqual(len(self.world.item_name_to_id), 1 + 3)
 
     def test_instantiated_location_count(self):
         # Gold + Author per track, plus the 25 milestones.
@@ -42,38 +41,16 @@ class TestVanillaDefault(TrackmaniaTurboTestBase):
         self.assertBeatable(True)
 
 
-class TestVanillaMedalsRequiredIgnored(TrackmaniaTurboTestBase):
-    options = {"unlock_style": "vanilla", "medals_required": "gold"}
+class TestVanillaMedalsRequired(TrackmaniaTurboTestBase):
+    options = {"medals_required": "bronze"}
 
-    def test_still_gold_and_author(self):
+    def test_lower_floor_instantiates_lower_tiers(self):
         loc_names = {loc.name for loc in self.multiworld.get_locations(1)}
+        self.assertIn("White Canyon 01 - Bronze", loc_names)
+        self.assertIn("White Canyon 01 - Silver", loc_names)
         self.assertIn("White Canyon 01 - Gold", loc_names)
         self.assertIn("White Canyon 01 - Author", loc_names)
-        self.assertNotIn("White Canyon 01 - Bronze", loc_names)
 
-
-class TestProgressive(TrackmaniaTurboTestBase):
-    options = {"unlock_style": "progressive"}
-
-    def test_location_count(self):
-        locs = [loc for loc in self.multiworld.get_locations(1)]
-        self.assertEqual(len(locs), 200 * 2)  # Gold + Author, no milestones
-
-    def test_progressive_pool(self):
-        prog = [i for i in self.multiworld.itempool if i.name.startswith("Progressive ")]
-        self.assertEqual(len(prog), (40 - 1) * 5)  # 39 per tier in the pool
-
-    def test_goal_needs_all_tiers(self):
-        self.collect_all_but(["Progressive Black"])
-        self.assertBeatable(False)
-        self.collect_by_name("Progressive Black")
-        self.assertBeatable(True)
-
-
-class TestIndividualRejected(TrackmaniaTurboTestBase):
-    options = {"unlock_style": "individual"}
-    auto_construct = False
-
-    def test_individual_raises(self):
-        from Options import OptionError
-        self.assertRaises(OptionError, self.world_setup)
+    def test_milestones_still_present(self):
+        self.multiworld.get_location("White Canyon Complete", 1)
+        self.multiworld.get_location("Black Complete", 1)

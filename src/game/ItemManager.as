@@ -1,30 +1,27 @@
 // Applies items the server sends us (ReceivedItems) to the local game state.
 //
 // Turbo has no runtime API to lock/unlock campaign tracks, so "unlocks" are
-// enforced by the plugin: ItemManager owns the set of unlocked track labels and
-// GameState / the UI consult it. Persisted per seed so a restart mid-run keeps
-// your unlocks without a server round-trip (the Sync on reconnect reconciles).
+// enforced by the plugin. The campaign uses the retail-style gate: the server
+// sends "<grade> Medal" items and block i (10 tracks in campaign order,
+// i = tier*4 + env, 0..19) opens once we hold m_blockThresholds[i] items of the
+// block's grade -- Bronze for i<8, Silver for i<16, Gold for i>=16. block 0 is
+// always open. Once a block is open, finishing a track sends whatever medal the
+// player earned (down to EffectiveRequiredMedal()); there is no per-medal
+// licence.
 //
-// Two unlock models, selected by slot_data.unlock_style (see S_UnlockStyle):
-//   * item styles ("progressive" / "individual") -- the server sends
-//     "Unlock: <Track>" / "Progressive <Tier>" items; m_unlockedTracks is the
-//     authoritative set.
-//   * "vanilla" -- the server sends "<grade> Medal" items; block i (10 tracks in
-//     campaign order) opens once we hold m_blockThresholds[i] items of the
-//     block's grade. m_unlockedTracks is unused. Once a block is open, finishing
-//     a track sends whatever medal the player actually earned -- no licence.
+// slot_data still carries `unlock_style` / `goal` for forward-compatibility;
+// this plugin only implements "vanilla" / "campaign_finish" and warns on
+// anything else.
 
 class ItemManager {
     private ApClient@ m_client;
 
     private int m_nextIndex = 0;             // ReceivedItems cursor
-    private dictionary m_unlockedTracks;     // label -> true  (item styles)
-    private dictionary m_itemCounts;         // itemName -> int (progressive / medals / filler)
+    private dictionary m_itemCounts;         // itemName -> int (medals / filler)
 
     // ---- slot_data ----
-    private string m_seedUnlockStyle = "";
-    private string m_goal = "campaign_finish";
     private array<int> m_blockThresholds;
+    private Medal m_requiredMedal = Medal::Gold;   // per-track check floor
     private bool m_goalReported = false;
 
     // Cached vanilla block-unlock state (index 0..19). Recomputed only when medal
@@ -45,11 +42,9 @@ class ItemManager {
 
     void Reset() {
         m_nextIndex = 0;
-        m_unlockedTracks.DeleteAll();
         m_itemCounts.DeleteAll();
         m_goalReported = false;
-        m_seedUnlockStyle = "";
-        m_goal = "campaign_finish";
+        m_requiredMedal = Medal::Gold;
         DefaultBlockThresholds();
         RecomputeBlocks();
     }
@@ -57,26 +52,36 @@ class ItemManager {
     // ---- slot_data ---------------------------------------------------
     void OnSlotData(Json::Value@ sd) {
         if (sd is null || sd.GetType() != Json::Type::Object) {
-            Log::Info("no slot_data -- using settings / defaults");
+            Log::Info("no slot_data -- using defaults");
             return;
         }
-        if (sd.HasKey("unlock_style")) m_seedUnlockStyle = string(sd["unlock_style"]);
-        if (sd.HasKey("goal")) m_goal = string(sd["goal"]);
+        if (sd.HasKey("unlock_style")) {
+            string style = string(sd["unlock_style"]);
+            if (style != "" && style != "vanilla")
+                Log::Warn("unsupported unlock_style '" + style + "' -- running vanilla");
+        }
+        if (sd.HasKey("goal")) {
+            string goal = string(sd["goal"]);
+            if (goal != "" && goal != "campaign_finish")
+                Log::Warn("unsupported goal '" + goal + "' -- using campaign_finish");
+        }
+        if (sd.HasKey("medals_required")) m_requiredMedal = ParseMedal(string(sd["medals_required"]));
         if (sd.HasKey("block_thresholds")) {
             Json::Value@ bt = sd["block_thresholds"];
             if (bt !is null && bt.GetType() == Json::Type::Array && bt.Length == uint(BLOCK_COUNT)) {
                 for (int i = 0; i < BLOCK_COUNT; i++) m_blockThresholds[i] = int(bt[i]);
             }
         }
-        Log::Info("slot_data: unlock_style=" + m_seedUnlockStyle + " goal=" + m_goal
-                  + " vanilla=" + (VanillaMode() ? "yes" : "no"));
+        Log::Info("slot_data: unlock_style=vanilla goal=campaign_finish medals_required="
+                  + MEDAL_SUFFIX[int(m_requiredMedal)]);
         RecomputeBlocks();
     }
 
-    bool VanillaMode() const {
-        if (S_UnlockStyle == UnlockStylePref::ForceVanilla) return true;
-        if (S_UnlockStyle == UnlockStylePref::ForceItems) return false;
-        return m_seedUnlockStyle == "vanilla";
+    private Medal ParseMedal(const string &in name) const {
+        if (name == "bronze") return Medal::Bronze;
+        if (name == "silver") return Medal::Silver;
+        if (name == "author") return Medal::Author;
+        return Medal::Gold;
     }
 
     // Recompute the 20 cached block-unlock bools from current medal counts.
@@ -87,17 +92,13 @@ class ItemManager {
         }
     }
 
-    string get_Goal() const { return m_goal; }
-
     // ---- queries ---------------------------------------------------
     bool IsTrackUnlocked(const string &in label) const {
-        if (VanillaMode()) return IsTrackUnlockedByNumber(CampaignNumberFromLabel(label));
-        return m_unlockedTracks.Exists(label);
+        return IsTrackUnlockedByNumber(CampaignNumberFromLabel(label));
     }
 
     // Cheap path for the overlay (it already has the 1..200 map number).
     bool IsTrackUnlockedByNumber(int campaignNumber) const {
-        if (!VanillaMode()) return m_unlockedTracks.Exists(TrackLabel(campaignNumber));
         int b = BlockIndex(campaignNumber);
         if (b <= 0) return true;                          // block 0 / non-campaign
         return m_blockUnlocked[b];
@@ -115,7 +116,6 @@ class ItemManager {
     }
 
     int UnlockedTrackCount() const {
-        if (!VanillaMode()) return m_unlockedTracks.GetSize();
         int n = 0;
         for (int i = 0; i < BLOCK_COUNT; i++) if (IsBlockUnlocked(i)) n += TRACKS_PER_BLOCK;
         return n;
@@ -128,10 +128,10 @@ class ItemManager {
         return int(n);
     }
 
-    // Vanilla always arms Bronze upward so bare/low finishes still count for the
-    // milestone + goal tracking; item styles honour the user's floor.
+    // The per-track check floor from slot_data (default Gold). A bare finish is
+    // still tracked for the milestones / goal regardless of this.
     Medal EffectiveRequiredMedal() const {
-        return VanillaMode() ? Medal::Bronze : S_RequiredMedal;
+        return m_requiredMedal;
     }
 
     int ItemCount(const string &in name) const {
@@ -153,7 +153,6 @@ class ItemManager {
 
         // index 0 == full replay (response to Sync). Reset local view first.
         if (index == 0) {
-            m_unlockedTracks.DeleteAll();
             m_itemCounts.DeleteAll();
             m_nextIndex = 0;
         } else if (index != m_nextIndex) {
@@ -169,77 +168,27 @@ class ItemManager {
         }
         m_nextIndex = index + arr.Length;
         RecomputeBlocks();
-        Persist();
         CheckGoal();
     }
 
     private void Apply(const string &in itemName) {
-        // Convention: track unlock items are named "Unlock: <Track Label>".
-        if (itemName.StartsWith("Unlock: ")) {
-            string label = itemName.SubStr(8);
-            m_unlockedTracks.Set(label, true);
-            Log::Info("Unlocked " + label);
-            return;
-        }
-        // Everything else is counted (progressive series unlocks, medals, filler,
-        // traps). Use the int64 Get/Set overloads explicitly -- the generic
-        // dictionary ?&out path does not reliably round-trip a 32-bit int here.
+        // Everything is counted (medals, filler, traps). Use the int64 Get/Set
+        // overloads explicitly -- the generic dictionary ?&out path does not
+        // reliably round-trip a 32-bit int here.
         int64 count = 0;
         m_itemCounts.Get(itemName, count);
         count += 1;
         m_itemCounts.Set(itemName, count);
         Log::Info("Received " + itemName + " (x" + count + ")");
-        ApplyProgressive(itemName, int(count));
     }
 
-    private void ApplyProgressive(const string &in itemName, int count) {
-        // e.g. "Progressive White" -> unlock the first N White tracks in campaign
-        // order (White Canyon 01, .. 10, White Valley 01, ..) as count grows.
-        if (!itemName.StartsWith("Progressive ")) return;
-        string tier = itemName.SubStr(12);
-        string label = TierTrackLabel(tier, count);
-        if (label == "") return;
-        m_unlockedTracks.Set(label, true);
-        Log::Info("Progressive unlock: " + label);
-    }
-
-    // Goal: read from slot_data. campaign_finish = crossed the line on all 200.
+    // Goal: finish (any medal, or none) all 200 campaign tracks. Tracked
+    // plugin-side in LocationManager.m_finishedTracks.
     void CheckGoal() {
         if (!S_AutoGoal || m_client is null || !m_client.IsReady || m_goalReported) return;
-        auto loc = m_client.locations;
-        bool done = false;
-        if (m_goal == "campaign_finish") {
-            done = loc.FinishedCountAll() >= 200;
-        } else if (m_goal == "author_times") {
-            done = false;   // reserved for a later "super solo" mode
-        } else {
-            done = loc.TotalCount > 0 && loc.CheckedCount >= loc.TotalCount;
-        }
-        if (done) {
+        if (m_client.locations.FinishedCountAll() >= 200) {
             m_goalReported = true;
             m_client.ReportGoal();
         }
-    }
-
-    // ---- persistence (per seed) -------------------------------------
-    private string StatePath() {
-        return IO::FromStorageFolder("seed-" + m_client.seedName + ".json");
-    }
-    private void Persist() {
-        Json::Value@ root = Json::Object();
-        root["nextIndex"] = m_nextIndex;
-        Json::Value@ tracks = Json::Array();
-        array<string>@ keys = m_unlockedTracks.GetKeys();
-        for (uint i = 0; i < keys.Length; i++) tracks.Add(Json::Value(keys[i]));
-        root["unlocked"] = tracks;
-        Json::ToFile(StatePath(), root);
-    }
-    void LoadState() {
-        if (m_client.seedName == "" || !IO::FileExists(StatePath())) return;
-        Json::Value@ root = Json::FromFile(StatePath());
-        if (root is null) return;
-        m_nextIndex = root["nextIndex"];
-        Json::Value@ tracks = root["unlocked"];
-        for (uint i = 0; i < tracks.Length; i++) m_unlockedTracks[string(tracks[i])] = true;
     }
 }

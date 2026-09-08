@@ -61,13 +61,6 @@ int CampaignNumberFromLabel(const string &in label) {
     return tierIdx * TRACKS_PER_TIER + envIdx * TRACKS_PER_ENV + idx;
 }
 
-// The nth track (1..40) of a tier, in campaign order -- for progressive unlocks.
-string TierTrackLabel(const string &in tier, int nth) {
-    int tierIdx = TIERS.Find(tier);
-    if (tierIdx < 0 || nth < 1 || nth > TRACKS_PER_TIER) return "";
-    return TrackLabel(tierIdx * TRACKS_PER_TIER + nth);
-}
-
 string TrackLocationName(const string &in trackLabel, Medal medal) {
     if (trackLabel == "" || int(medal) < 1 || int(medal) > 4) return "";
     return trackLabel + " - " + MEDAL_SUFFIX[int(medal)];

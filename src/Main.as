@@ -44,8 +44,8 @@ void Update(float dt) {
     // Retry queued checks once the session is (re)established.
     if (g_client.IsReady) {
         g_client.locations.Flush();
-        // Vanilla's goal advances on finishes, not on item receipt -- re-check
-        // here too (idempotent; guarded by m_goalReported).
+        // The goal advances on finishes, not on item receipt -- re-check here
+        // too (idempotent; guarded by m_goalReported).
         g_client.items.CheckGoal();
     }
 }

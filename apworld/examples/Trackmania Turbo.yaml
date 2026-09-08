@@ -8,12 +8,6 @@ Trackmania Turbo:
   progression_balancing: 50
   accessibility: full
 
-  # vanilla (default) | progressive | individual (not implemented)
-  unlock_style: vanilla
-
-  # campaign_finish (default) | author_times
-  goal: campaign_finish
-
-  # Lowest medal that sends a check. Only the progressive/individual styles
-  # consult this - vanilla is always Gold + Author.
+  # Lowest medal tier that sends a per-track check.
+  # bronze | silver | gold (default) | author
   medals_required: gold
