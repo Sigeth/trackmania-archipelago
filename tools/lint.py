@@ -158,9 +158,6 @@ def check_info_toml() -> str | None:
     ver = meta.get("version", "")
     if ver and not re.fullmatch(r"\d+\.\d+\.\d+", ver):
         err(f"info.toml: [meta].version {ver!r} is not X.Y.Z")
-    src = data.get("script", {}).get("sources")
-    if src is not None and not isinstance(src, list):
-        err("info.toml: [script].sources must be an array")
     return ver or None
 
 

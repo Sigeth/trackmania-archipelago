@@ -5,6 +5,8 @@ version     = "0.1.0"
 category    = "Multiworld"
 description = "Integrates Trackmania Turbo with the Archipelago.gg multiworld randomizer."
 
-[script]
-# Openplanet compiles every *.as under src/ by default. Listed here for clarity.
-sources = [ "src/**.as" ]
+# NOTE: Openplanet compiles EVERY *.as anywhere under the deployed plugin folder
+# into one module — there is no source include/exclude list in info.toml. Keep
+# non-plugin AngelScript (the tools/as/ stub, tests, overrides, and its CMake
+# _deps tree) out of what gets deployed: the dev install links only info.toml +
+# src/ (see CLAUDE.md "Dev install"), which is also exactly what the .op ships.
