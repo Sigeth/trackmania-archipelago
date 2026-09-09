@@ -43,6 +43,9 @@ bool S_CampaignOverlay = true;
 [Setting category="Behaviour" name="Send the player back to the menu when they enter a locked track"]
 bool S_BlockLockedTracks = true;
 
+[Setting category="Behaviour" name="Show in-game notifications when this slot receives an item or checks a location"]
+bool S_Notifications = true;
+
 [Setting category="Debug" name="Verbose protocol logging"]
 bool S_Trace = false;
 

@@ -78,7 +78,7 @@ Style: 4-space indent, `PascalCase` methods, `m_` private fields, `S_` settings,
   API (from the `api/*.json` dumps) plus working `string`/`array`/`dictionary`/
   `Json`, and compiles `src/**.as` as one module — a genuine type-check.
   `asrun --compile src` is the gate; `asrun --test src tools/as/tests` runs the
-  `Test_*` unit tests (TrackTable, Protocol, DataPackage). CI job `angelscript`;
+  `Test_*` unit tests (TrackTable, Protocol, DataPackage, Notify). CI job `angelscript`;
   local `pwsh tools/as/check.ps1`. It catches renamed members / wrong signatures
   / undeclared names / bad returns, but the stubs are script classes not the
   registered interface — `Transport`/`GameState`/UI are compile-only, and a real
@@ -214,6 +214,7 @@ the online Openplanet docs describe the newer TM2020 build.
 | `src/game/LocationManager.as` | finish → location id; dedupe; batched send; per-track checked-medal mask |
 | `src/game/ItemManager.as` | consumes `ReceivedItems`; counts `<grade> Medal` items; client-enforced 20-block unlock gate |
 | `src/ui/Window.as` | Status window + `RenderMenu()` entry + chat panel (log view + input; sends `Say`) |
+| `src/ui/Notify.as` | `UI::ShowNotification` toasts, raised from `ApClient.OnPrintJson` for `ItemSend`/`ItemCheat` routes touching this slot — server's own sentence with our slot as "you"/"You" (`S_Notifications`) |
 | `src/ui/CampaignOverlay.as` | `Render()` — nvg lock / medal-pip markers on the series grid *and* the per-series track picker |
 
 ## Naming contract with the `.apworld`

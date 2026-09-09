@@ -228,6 +228,13 @@ class ApClient {
         }
         AppendChat(coloured);
         Log::Info(plain);
+
+        // For item routing that involves this slot, toast the server's own
+        // sentence with our slot rendered as "you"/"You".
+        string sentence;
+        int flags;
+        if (Notify::RouteSentence(cmd, m_slotNr, m_slotToAlias, data, sentence, flags))
+            Notify::Route(sentence, flags);
     }
 
     // One JSONMessagePart -> a string with Openplanet ("\\$rgb") colour codes.
