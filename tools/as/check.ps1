@@ -15,8 +15,11 @@ param([switch]$NoTest, [switch]$Clean)
 $ErrorActionPreference = 'Stop'
 $here  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $plugin = Resolve-Path (Join-Path $here '..\..')
+# Build tree lives OUTSIDE the plugin folder: the dev install may symlink this
+# repo into the Openplanet plugins dir, and Openplanet would try to compile the
+# AngelScript SDK sources CMake fetches into _deps/ (see tools/as/README.md).
 $cache = Join-Path $env:LOCALAPPDATA 'op-asrun-cache'
-$build = Join-Path $here 'build'
+$build = Join-Path $cache 'build'
 New-Item -ItemType Directory -Force -Path $cache | Out-Null
 
 function Find-Python {
@@ -46,6 +49,10 @@ function Get-CMake {
 
 $py    = Find-Python
 $cmake = Get-CMake
+
+# Generated stub also goes outside the plugin folder (gen_stubs.py + asrun read $ASRUN_GEN).
+$env:ASRUN_GEN = Join-Path $cache 'generated'
+New-Item -ItemType Directory -Force -Path $env:ASRUN_GEN | Out-Null
 
 Write-Host "== regenerating stubs ==" -ForegroundColor Cyan
 & ([scriptblock]::Create("$py `"$here\gen_stubs.py`""))

@@ -4,7 +4,9 @@
 /build/
 /dist/
 
-# AngelScript checker (tools/as): build tree + generated stub (regenerated from api/*.json)
+# AngelScript checker (tools/as): build tree + generated stub. check.ps1 now puts
+# both under %LOCALAPPDATA%\op-asrun-cache (outside the deployed plugin folder);
+# these paths still catch in-tree CI / manual `cmake -B tools/as/build` runs.
 tools/as/build/
 tools/as/generated/
 *.obj

@@ -22,13 +22,18 @@ CI `asrun --gen-check` re-runs this and fails if generated/ is stale.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 API = HERE / "api"
-OUT = HERE / "generated" / "openplanet.stub.as"
+# $ASRUN_GEN (set by check.ps1) puts the generated stub outside the repo, so it
+# is never picked up as plugin source when this tree is symlinked into the
+# Openplanet plugins folder. Unset (CI) -> the in-tree tools/as/generated/.
+GEN_DIR = Path(os.environ["ASRUN_GEN"]) if os.environ.get("ASRUN_GEN") else HERE / "generated"
+OUT = GEN_DIR / "openplanet.stub.as"
 SRC = HERE.parent.parent / "src"
 
 
@@ -498,7 +503,11 @@ def main() -> int:
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text("\n".join(out) + "\n", "utf-8", newline="\n")
-    print(f"wrote {OUT.relative_to(HERE.parent.parent)} "
+    try:
+        shown = OUT.relative_to(HERE.parent.parent)
+    except ValueError:
+        shown = OUT  # written outside the repo (ASRUN_GEN)
+    print(f"wrote {shown} "
           f"({len(emitted_classes)} classes, {len(emitted_enums)} enums, "
           f"{OUT.stat().st_size // 1024} KiB)")
     return 0

@@ -88,8 +88,13 @@ int main(int argc, char** argv) {
     }
 
     fs::path here = HereDir();
+    // $ASRUN_GEN overrides the generated-stub directory; check.ps1 points it
+    // outside the repo so the stub never lands in a symlinked plugin folder
+    // (CI leaves it unset -> the in-tree tools/as/generated/).
+    fs::path genDir = here / "generated";
+    if (const char* g = getenv("ASRUN_GEN")) genDir = fs::path(g);
     std::vector<std::string> files;
-    files.push_back((here / "generated" / "openplanet.stub.as").string());
+    files.push_back((genDir / "openplanet.stub.as").string());
     files.push_back((here / "overrides.as").string());
 
     if (testMode) {

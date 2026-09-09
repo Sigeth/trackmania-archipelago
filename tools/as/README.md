@@ -18,7 +18,7 @@ asrun --test    src tools/as/tests  # + run every global  void Test_*()
 | Path | What |
 |------|------|
 | `api/OpenplanetCore.json`, `api/OpenplanetTurbo.json` | Snapshots of Openplanet's own API dumps (`%USERPROFILE%/OpenplanetTurbo/…`). The **only** committed inputs. `api/op-version.txt` records which build. |
-| `gen_stubs.py` | `api/*.json` → `generated/openplanet.stub.as` — every namespace, enum, funcdef, class (inert bodies). Gitignored output; regenerated on every build. |
+| `gen_stubs.py` | `api/*.json` → `openplanet.stub.as` — every namespace, enum, funcdef, class (inert bodies). Regenerated on every build. Writes to `$ASRUN_GEN` if set (`check.ps1` points it outside the repo), else the gitignored in-tree `generated/`. |
 | `overrides.as` | Hand-written fixups loaded after the generated stub. |
 | `host/` | `main.cpp` (driver), `op_string.cpp` / `op_bindings.cpp` (string/array/dict/Text/log with Openplanet's spelling), `json_value.cpp` (a real minimal `Json::`). |
 | `tests/` | `_assert.as` + `test_*.as`. A test is a global `void Test_*()`; a failed `Assert` throws and the runner reports `FAIL`. |
@@ -28,15 +28,20 @@ asrun --test    src tools/as/tests  # + run every global  void Test_*()
 ## Running it
 
 **Local (Windows):** `pwsh tools/as/check.ps1` (add `-NoTest` for the gate only,
-`-Clean` to wipe the build tree). Needs Visual Studio's MSVC toolset; CMake and
-AngelScript are downloaded to `%LOCALAPPDATA%\op-asrun-cache`.
+`-Clean` to wipe the build tree). Needs Visual Studio's MSVC toolset. CMake,
+AngelScript, the build tree **and** the generated stub all live under
+`%LOCALAPPDATA%\op-asrun-cache` — deliberately outside the repo, since the dev
+install may symlink this tree into the Openplanet plugins folder and Openplanet
+would try to compile the SDK sources under `_deps/`.
 
 **CI:** the `angelscript` job in `.github/workflows/ci.yml` (cmake + gcc, both
-preinstalled on the runner).
+preinstalled on the runner). The throwaway checkout builds in-tree
+(`tools/as/build`, `tools/as/generated`) — fine there, nothing loads it as a plugin.
 
 **Manual:** `python tools/as/gen_stubs.py` then
-`cmake -S tools/as -B tools/as/build && cmake --build tools/as/build` then run
-`asrun` as above.
+`cmake -S tools/as -B <build> && cmake --build <build>` then run `asrun` as above.
+If this tree is your dev-installed plugin, put `<build>` (and `ASRUN_GEN`)
+outside it.
 
 ## What it catches — and what it doesn't
 
