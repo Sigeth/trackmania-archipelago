@@ -24,11 +24,24 @@ There is no compiler or test runner. **Build = reload:**
 force it). Turn on `Settings > Archipelago > Debug > Verbose protocol logging`
 (`S_Trace`) for per-frame tracing.
 
-Dev install — symlink this folder into the plugins dir:
+Dev install — deploy **only the plugin payload** (`info.toml` + `src/`), never
+the whole repo. Openplanet compiles every `.as` anywhere under a plugin folder
+into one module, so a whole-repo symlink drags in `tools/as/` (the generated API
+stub, the unit tests, `overrides.as`, and the AngelScript SDK sources CMake
+fetches into `tools/as/build/_deps/`) and the load fails with `#include` /
+`#pragma` / duplicate-section errors.
 
 ```
-cmd /c mklink /D "%USERPROFILE%\OpenplanetTurbo\Plugins\Archipelago" "%CD%"
+set "AP=%USERPROFILE%\OpenplanetTurbo\Plugins\Archipelago"
+mkdir "%AP%"
+mklink /J "%AP%\src" "%CD%\src"
+mklink /H "%AP%\info.toml" "%CD%\info.toml"
 ```
+
+`/J` (junction) and `/H` (hard link) need no elevation, unlike `mklink /D`. The
+hard link breaks if `info.toml` is rewritten out of place (a `git` checkout that
+changes it, e.g. a release bump) — re-run the last line if the version in-game
+looks stale. This layout is exactly what `dist/Archipelago.op` ships.
 
 Manual testing: run a local `ArchipelagoServer` (or `MultiServer.py`) hosting a
 `Trackmania Turbo` world on `localhost:38281`, connect the plugin (`ws://`, TLS
@@ -130,6 +143,18 @@ and AngelScript string concat truncate at the first `0x00`, and WebSocket frame
 length headers contain zero bytes (any payload length that is a multiple of 256).
 Read via `Socket.ReadBuffer` → `MemoryBuffer`; only turn a NUL-free JSON payload
 into a `string`.
+
+**No `permessage-deflate` (known issue).** The AP server prints "your client
+does not support compressed websocket connections" on every connect. `Transport`
+sends no `Sec-WebSocket-Extensions` header and does not handle the RSV1
+(compressed) frame bit, so the server never compresses and the connection is
+fine — the warning is purely forward-compat. It is **not fixable on this build**:
+the Turbo Openplanet API has no DEFLATE/inflate/zlib primitive at all (checked
+`OpenplanetCore.json` and `Crypto::`), and no other Openplanet AngelScript plugin
+has implemented WS compression (`chipsTM/tm-websockets` is likewise a hand-rolled
+RFC 6455 with none). Closing it would mean porting a pure-script inflater
+(~300–500 lines). Deferred until a future AP server actually rejects uncompressed
+clients. See workspace `CLAUDE.md` open question 1.
 
 ### Openplanet Turbo API traps
 

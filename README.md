@@ -36,6 +36,19 @@ under `Openplanet > Settings > Archipelago`. Turn on
 `Settings > Archipelago > Debug > Verbose protocol logging` to see every frame on
 the wire.
 
+## Known issues
+
+- **"your client does not support compressed websocket connections"** — the
+  Archipelago server prints this warning every time the plugin connects. It is
+  harmless: the plugin's WebSocket client (`src/net/Transport.as`, hand-rolled
+  because the Turbo build of Openplanet has no `Net::WebSocket`) does not
+  negotiate the `permessage-deflate` compression extension, so the server simply
+  sends uncompressed frames and everything works. Not fixed yet because the Turbo
+  Openplanet scripting API exposes no DEFLATE/zlib decompression primitive, so
+  supporting compression would require shipping a full inflate implementation
+  written in AngelScript. Deferred unless a future server release starts
+  requiring compression.
+
 ## Packaging
 
 Releases are automated with
