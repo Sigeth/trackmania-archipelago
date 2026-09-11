@@ -87,9 +87,10 @@ These strings must match on both sides:
   Black}, Environment ∈ {Canyon, Valley, Lagoon, Stadium}, NN = 01..10 (200
   tracks). Medal ∈ {Bronze, Silver, Gold, Author}.
 - Milestone locations: `<Tier> <Env> Complete` (×20), `<Tier> Complete` (×5).
-- Medal item: `Bronze Medal` / `Silver Medal` / `Gold Medal` — the randomised
-  progression; block `i` opens at `10·i` received items of its grade.
-- `slot_data`: `unlock_style` (`"vanilla"`), `goal` (`"campaign_finish"`),
+- Medal item: `Progressive Medal` — one currency for the whole campaign; block
+  `i` opens at `10·i` received items (`unlock_style: real_medals`, a future
+  per-grade opt-in, is reserved but not implemented).
+- `slot_data`: `unlock_style` (`"progressive"`), `goal` (`"campaign_finish"`),
   `block_thresholds` (20 ints), `medals_required`.
 
 ## Layout

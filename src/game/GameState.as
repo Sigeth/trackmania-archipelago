@@ -133,7 +133,7 @@ class GameState {
         if (LockedNow()) { Log::Trace(m_currentLabel + " finished but locked -- ignoring"); return; }
 
         // Fire on the first time we see this track finish (any medal, or none --
-        // vanilla mode counts a bare finish for the milestone / goal), and again
+        // a bare finish still counts for the milestone / goal), and again
         // whenever the medal improves (so a later Gold arms its check).
         bool firstFinish = !m_finishedSeen.Exists(m_currentLabel);
         m_finishedSeen.Set(m_currentLabel, true);

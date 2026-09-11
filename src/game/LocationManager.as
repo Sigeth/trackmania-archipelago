@@ -8,7 +8,7 @@
 //
 // A bare finish (crossing the line with no medal) is NOT a check. We record it
 // in m_finishedTracks (persisted per seed): that set drives the milestone checks
-// and the vanilla `campaign_finish` goal.
+// and the `campaign_finish` goal.
 
 class LocationManager {
     private ApClient@ m_client;

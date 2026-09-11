@@ -8,12 +8,15 @@
 // campaign finish.
 //
 // SOUND is the game's own extracted medal voice lines (native-only, not bundled;
-// see assets/README.md). Two triggers, both routed through PlayTierSound():
-//   * a received medal ITEM  -> Bronze / Silver / Gold voice line
-//     (ItemManager queues the tier; Update drains it on the game thread)
-//   * a Gold-or-Author FINISH that armed a check -> Gold / Author voice line
-//     (Trigger(); Author wins when the run cleared both)
-// A missing file just means that tier is silent -- no synthesised fallback.
+// see assets/README.md), routed through PlayTierSound() on a Gold-or-Author
+// FINISH that armed a check -> Gold / Author voice line (Trigger(); Author
+// wins when the run cleared both). A missing file just means that tier is
+// silent -- no synthesised fallback.
+//
+// There used to be a second trigger (a received Bronze/Silver/Gold medal ITEM
+// playing that tier's line), tied to the old per-grade unlock economy. The
+// apworld now sends a single ungraded "Progressive Medal" item, so there's no
+// tier to announce on receipt -- dropped until unlock_style: real_medals ships.
 //
 // Driven from Main.as: MedalSplash::Trigger(...) after a finish is processed,
 // MedalSplash::PlayTierSound(...) for drained item sounds, MedalSplash::Render()
@@ -93,8 +96,8 @@ namespace MedalSplash {
         return m_samples[mi];
     }
 
-    // Play the medal voice line for `tier` (Medal enum 1..4). Used for both
-    // received medal items (Bronze/Silver/Gold) and gold+ finishes. Safe to call
+    // Play the medal voice line for `tier` (Medal enum 1..4), on a gold+ finish
+    // (also exposed for the "audition voice lines" debug buttons). Safe to call
     // from the game thread (Update). Silent if S_MedalSound is off or the file
     // is missing. MUST be called on the game thread.
     void PlayTierSound(int tier) {

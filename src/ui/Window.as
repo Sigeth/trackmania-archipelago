@@ -113,16 +113,12 @@ void RenderProgress() {
     UI::ProgressBar(frac, vec2(-1, 0), loc.CheckedCount + " / " + loc.TotalCount + " checks");
     UI::Text("Tracks unlocked: " + items.UnlockedTrackCount());
 
-    UI::Text("Medals  \\$c94B:" + items.MedalCount(Medal::Bronze)
-             + "  \\$bbbS:" + items.MedalCount(Medal::Silver)
-             + "  \\$fd4G:" + items.MedalCount(Medal::Gold));
+    UI::Text("Progressive Medals: " + items.ItemCount(PROGRESSIVE_MEDAL_ITEM));
     UI::Text("Finished: " + loc.FinishedCountAll() + " / 200");
     int nextBlock = FirstLockedBlock();
     if (nextBlock >= 0) {
-        Medal g = BlockGrade(nextBlock);
-        int need = items.BlockThreshold(nextBlock) - items.MedalCount(g);
-        UI::Text("Next: " + BlockName(nextBlock) + "  (need " + need + " more "
-                 + MEDAL_SUFFIX[int(g)] + ")");
+        int need = items.BlockThreshold(nextBlock) - items.ItemCount(PROGRESSIVE_MEDAL_ITEM);
+        UI::Text("Next: " + BlockName(nextBlock) + "  (need " + need + " more)");
     } else {
         UI::Text("\\$3f3All 20 blocks unlocked");
     }

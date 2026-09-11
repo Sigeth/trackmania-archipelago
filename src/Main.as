@@ -48,20 +48,6 @@ void Update(float dt) {
         @g_gameState.pendingFinish = null;
     }
 
-    // Play the voice line for any medal item received since the last frame.
-    // Drained here (game thread) because Audio must not be touched from the
-    // client coroutine. Highest tier only when several landed in one batch.
-    int soundMask = g_client.items.pendingMedalSoundMask;
-    if (soundMask != 0) {
-        g_client.items.pendingMedalSoundMask = 0;
-        for (int tier = int(Medal::Gold); tier >= int(Medal::Bronze); tier--) {
-            if ((soundMask & (1 << tier)) != 0) {
-                MedalSplash::PlayTierSound(tier);
-                break;
-            }
-        }
-    }
-
     // Retry queued checks once the session is (re)established.
     if (g_client.IsReady) {
         g_client.locations.Flush();

@@ -29,9 +29,12 @@ a whole tier ("<Tier> Complete"). Set `medals_required` lower (`silver` /
 
 ## How the campaign unlocks
 
-The 200 tracks are 20 blocks of 10. The multiworld hands you `Bronze Medal` /
-`Silver Medal` / `Gold Medal` items; a block opens once you hold
-`10 x <block number>` of its grade (Bronze for the White/Green blocks, Silver
-for Blue/Red, Gold for Black). Once a block is open, finishing a track sends
-whatever medal you earned. The plugin enforces the locks because Turbo exposes
-no unlock API. The goal is to finish (any medal, or none) all 200 tracks.
+The 200 tracks are 20 blocks of 10. The multiworld hands you `Progressive
+Medal` items — one currency for the whole campaign — and a block opens once
+you hold `10 x <block number>` of them (block 1 needs 10, block 19 needs 190).
+Once a block is open, finishing a track sends whatever medal you earned. The
+plugin enforces the locks because Turbo exposes no unlock API. The goal is to
+finish (any medal, or none) all 200 tracks.
+
+(A future `unlock_style: real_medals` option is reserved for gating each block
+on the exact Bronze/Silver/Gold grade it needs, but isn't implemented yet.)

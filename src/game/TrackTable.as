@@ -28,6 +28,9 @@ const array<string> ENVIRONMENTS = { "Canyon", "Valley", "Lagoon", "Stadium" };
 const int TRACKS_PER_TIER = 40;
 const int TRACKS_PER_ENV = 10;
 const array<string> MEDAL_SUFFIX = { "", "Bronze", "Silver", "Gold", "Author" };
+// The single unlock-progression item (unlock_style: "progressive"). See
+// ItemManager.RecomputeBlocks().
+const string PROGRESSIVE_MEDAL_ITEM = "Progressive Medal";
 
 // "001".."200" from an official-campaign map -> 1..200; anything else -> 0.
 int CampaignNumber(const string &in mapName, const string &in authorLogin) {
@@ -66,15 +69,15 @@ string TrackLocationName(const string &in trackLabel, Medal medal) {
     return trackLabel + " - " + MEDAL_SUFFIX[int(medal)];
 }
 
-// ---- vanilla unlock model -------------------------------------------------
+// ---- progressive unlock model ----------------------------------------------
 //
 // The 200 campaign tracks split into 20 "blocks" of 10 (one tier/environment
 // pair each), in campaign order: block index i = tierIdx*4 + envIdx, i in 0..19.
-// Block i opens once the player has received block-threshold[i] medal items of
-// the block's grade -- Bronze for the White/Green blocks (i < 8), Silver for
-// Blue/Red (i < 16), Gold for Black. block-threshold[i] == 10*i (block 0 -> 0,
-// always open); the real table is sent in slot_data. These helpers mirror the
-// apworld (worlds/trackmania_turbo/__init__.py).
+// Block i opens once the player has received block-threshold[i] "Progressive
+// Medal" items -- one currency for all 20 blocks, no grade distinction.
+// block-threshold[i] == 10*i (block 0 -> 0, always open); the real table is
+// sent in slot_data. These helpers mirror the apworld
+// (apworld/trackmania_turbo/__init__.py).
 
 const int BLOCK_COUNT = 20;
 const int TRACKS_PER_BLOCK = 10;
@@ -89,13 +92,6 @@ int BlockIndex(int campaignNumber) {
 // "White Valley 03" -> block 1; malformed -> -1.
 int BlockIndexFromLabel(const string &in label) {
     return BlockIndex(CampaignNumberFromLabel(label));
-}
-
-// The medal grade whose received count gates this block.
-Medal BlockGrade(int blockIndex) {
-    if (blockIndex < 8) return Medal::Bronze;
-    if (blockIndex < 16) return Medal::Silver;
-    return Medal::Gold;
 }
 
 // "White Canyon", "Black Stadium", ... ; "" if out of range.

@@ -44,12 +44,6 @@ void Test_block_model() {
     AssertEq(BlockIndex(200), 19, "map 200 -> block 19");
     AssertEq(BlockIndex(0),   -1, "out of range");
 
-    AssertEq(int(BlockGrade(0)),  int(Medal::Bronze), "block 0 grade");
-    AssertEq(int(BlockGrade(7)),  int(Medal::Bronze), "block 7 grade");
-    AssertEq(int(BlockGrade(8)),  int(Medal::Silver), "block 8 grade");
-    AssertEq(int(BlockGrade(15)), int(Medal::Silver), "block 15 grade");
-    AssertEq(int(BlockGrade(16)), int(Medal::Gold),   "block 16 grade");
-
     AssertEq(BlockName(0),  "White Canyon",  "block 0 name");
     AssertEq(BlockName(19), "Black Stadium", "block 19 name");
     AssertEq(BlockCompleteLocation(0), "White Canyon Complete", "block 0 milestone");

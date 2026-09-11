@@ -252,12 +252,12 @@ the online Openplanet docs describe the newer TM2020 build.
 | `src/game/GameState.as` | Reads the Turbo nods; emits `FinishEvent` on a race finish; bounces the player out of locked tracks |
 | `src/game/TrackTable.as` | Campaign map number (1–200) ⇄ `"<Tier> <Env> NN"` label |
 | `src/game/LocationManager.as` | finish → location id; dedupe; batched send; per-track checked-medal mask; reports what a finish armed (for the splash) |
-| `src/game/ItemManager.as` | consumes `ReceivedItems`; counts `<grade> Medal` items; client-enforced 20-block unlock gate |
+| `src/game/ItemManager.as` | consumes `ReceivedItems`; counts `"Progressive Medal"` items; client-enforced 20-block unlock gate |
 | `src/ui/Window.as` | Status window + `RenderMenu()` entry + chat panel (log view + input; sends `Say`) |
 | `src/ui/Notify.as` | `UI::ShowNotification` toasts, raised from `ApClient.OnPrintJson` for `ItemSend`/`ItemCheat` routes touching this slot — server's own sentence with our slot as "you"/"You" (`S_Notifications`) |
 | `src/Main.as` `Render()` | The plugin's single `Render()` — `RenderCampaignOverlay()` then `MedalSplash::Render()` |
 | `src/ui/CampaignOverlay.as` | `RenderCampaignOverlay()` — nvg lock / medal-pip markers on the series grid *and* the per-series track picker |
-| `src/ui/MedalSplash.as` | Centred foreground-draw-list medal banner on every campaign finish + the game's extracted announcer voice lines (`assets/voice-medal-*.wav`) on a received medal item and on a Gold/Author finish that armed a check |
+| `src/ui/MedalSplash.as` | Centred foreground-draw-list medal banner on every campaign finish + the game's extracted announcer voice lines (`assets/voice-medal-*.wav`) on a Gold/Author finish that armed a check |
 
 ## Naming contract with the `.apworld`
 
@@ -277,14 +277,18 @@ If you change one of these, change it on both sides.
   (no medal) is **not** a check — the plugin tracks it locally
   (`LocationManager.m_finishedTracks`, persisted `seed-<name>-finished.json`) to
   drive the milestones and the `campaign_finish` goal.
-- Medal item: `"Bronze Medal"` / `"Silver Medal"` / `"Gold Medal"` — the
-  randomised progression. Block `i` (10 tracks in campaign order,
-  `i = tier*4 + env`, 0..19) opens once the received count of the block-grade
-  medal (`Bronze i<8`, `Silver i<16`, `Gold i≥16`) reaches `block_thresholds[i]`
-  (`= 10*i`, block 0 always open). Once a block is open, finishing a track sends
-  whatever medal the player earned — no licence gate.
-- `slot_data`: `unlock_style` (always `"vanilla"`), `goal` (always
-  `"campaign_finish"`) — still sent, plugin warns on anything else;
+- Medal item: `"Progressive Medal"` — one currency for the whole campaign, no
+  grade distinction. Block `i` (10 tracks in campaign order, `i = tier*4 + env`,
+  0..19) opens once the received count reaches `block_thresholds[i]` (`= 10*i`,
+  block 0 always open). Once a block is open, finishing a track sends whatever
+  medal the player earned — no licence gate. A per-grade `"Bronze/Silver/Gold
+  Medal"` economy was tried and found mathematically unsolvable solo (see the
+  apworld's `__init__.py` module docstring) — `unlock_style: real_medals` is
+  reserved for a future, carefully-scaled reintroduction; selecting it raises
+  `OptionError` at generation time, and the plugin only implements
+  `"progressive"`.
+- `slot_data`: `unlock_style` (`"progressive"`, `"real_medals"` reserved), `goal`
+  (always `"campaign_finish"`) — still sent, plugin warns on anything else;
   `block_thresholds` (20 ints); `medals_required` (`bronze|silver|gold|author`,
   the per-track check floor).
 
@@ -300,13 +304,14 @@ If you change one of these, change it on both sides.
 - **Goal condition — done.** One goal: `campaign_finish` fires at
   `LocationManager.FinishedCountAll() >= 200`. `ItemManager.CheckGoal()` warns
   if `slot_data.goal` is anything else.
-- **Unlock mode — one model (retail-style block gate), pending in-game test.**
-  `ItemManager` counts `<grade> Medal` items and opens the 20 blocks from
-  `slot_data.block_thresholds`; `LocationManager` milestones + `m_finishedTracks`
-  persistence; `GameState` emits `FinishEvent` on a **no-medal finish** too
-  (`FinishEvent.medal` may be `Medal(0)`). VERIFY in-game: a sub-Bronze run still
-  reaches `RaceState == Finished` with a readable time; blocks unlock as medal
-  items land; milestone checks fire; reconnect rebuilds the finished set.
+- **Unlock mode — one model (single-currency progressive block gate), pending
+  in-game test.** `ItemManager` counts `"Progressive Medal"` items and opens
+  the 20 blocks from `slot_data.block_thresholds`; `LocationManager` milestones
+  + `m_finishedTracks` persistence; `GameState` emits `FinishEvent` on a
+  **no-medal finish** too (`FinishEvent.medal` may be `Medal(0)`). VERIFY
+  in-game: a sub-Bronze run still reaches `RaceState == Finished` with a
+  readable time; blocks unlock as medal items land; milestone checks fire;
+  reconnect rebuilds the finished set.
 - **Medal-detection breadth.** Verified for one track; spot-check the finish
   signal and `CurRace.Time` on a few more, and whether solo always passes through
   `RaceState == Finished` (fallback: `CGamePlaygroundScript.Solo_NewRecordSequenceInProgress`).
@@ -318,14 +323,13 @@ If you change one of these, change it on both sides.
   voice lines (`assets/voice-medal-{bronze,silver,gold,author}.wav`), **native-only,
   not shipped** — a missing file just means that tier is silent, no synthesised
   fallback (user decision). All sound goes through `MedalSplash::PlayTierSound()`,
-  which MUST run on the game thread. Two triggers:
-  - a **received medal item** (Bronze/Silver/Gold) → that tier's line.
-    `ItemManager.pendingMedalSoundMask` (bitmask, written in the client coroutine
-    on a non-replay `ReceivedItems`) is drained in `Update()` — highest tier only
-    per batch.
-  - a **Gold or Author finish that armed a check** → Gold / Author line (Author
-    wins when the run cleared both; `SplashInfo.medal` is already the single best
-    tier). Bronze/Silver finishes are silent.
+  which MUST run on the game thread. One trigger: a **Gold or Author finish
+  that armed a check** → Gold / Author line (Author wins when the run cleared
+  both; `SplashInfo.medal` is already the single best tier). Bronze/Silver
+  finishes are silent. (There used to be a second trigger — a received
+  Bronze/Silver/Gold medal *item* playing that tier's line — but the apworld
+  now sends a single ungraded `"Progressive Medal"` item, so there's no tier to
+  announce on receipt; dropped until `unlock_style: real_medals` ships.)
   The game's own jingle can't be triggered directly (`PlayUiSound` /
   `PlaySoundLibrary` are ManiaScript-only, pak audio is `CPlugFileSnd`);
   `assets/README.md` has the extraction targets. `Audio::LoadSample` throws on a

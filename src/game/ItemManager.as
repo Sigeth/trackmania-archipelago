@@ -1,17 +1,19 @@
 // Applies items the server sends us (ReceivedItems) to the local game state.
 //
 // Turbo has no runtime API to lock/unlock campaign tracks, so "unlocks" are
-// enforced by the plugin. The campaign uses the retail-style gate: the server
-// sends "<grade> Medal" items and block i (10 tracks in campaign order,
-// i = tier*4 + env, 0..19) opens once we hold m_blockThresholds[i] items of the
-// block's grade -- Bronze for i<8, Silver for i<16, Gold for i>=16. block 0 is
-// always open. Once a block is open, finishing a track sends whatever medal the
+// enforced by the plugin. The campaign uses a single-currency progressive
+// gate: the server sends "Progressive Medal" items and block i (10 tracks in
+// campaign order, i = tier*4 + env, 0..19) opens once we hold
+// m_blockThresholds[i] of them -- no grade distinction. block 0 is always
+// open. Once a block is open, finishing a track sends whatever medal the
 // player earned (down to EffectiveRequiredMedal()); there is no per-medal
 // licence.
 //
 // slot_data still carries `unlock_style` / `goal` for forward-compatibility;
-// this plugin only implements "vanilla" / "campaign_finish" and warns on
-// anything else.
+// this plugin only implements "progressive" / "campaign_finish" and warns on
+// anything else. A per-grade "real_medals" economy was tried and found
+// mathematically unsolvable solo (see the apworld module docstring) -- the
+// `real_medals` unlock_style is reserved but not sent by the apworld yet.
 
 class ItemManager {
     private ApClient@ m_client;
@@ -19,22 +21,13 @@ class ItemManager {
     private int m_nextIndex = 0;             // ReceivedItems cursor
     private dictionary m_itemCounts;         // itemName -> int (medals / filler)
 
-    // Bitmask of medal tiers newly received since the game thread last drained it
-    // (bit (1<<Medal): Bronze->2, Silver->4, Gold->8). Written here (client
-    // coroutine), read+cleared in Update() which then plays the voice line --
-    // Audio must not be touched off the game thread. Same single-field
-    // cross-thread hand-off style as GameState.pendingFinish; an int read/write
-    // is atomic, and losing the exact repeat count is fine (one "Gold medal!"
-    // for a batch of three beats three at once).
-    int pendingMedalSoundMask = 0;
-
     // ---- slot_data ----
     private array<int> m_blockThresholds;
     private Medal m_requiredMedal = Medal::Gold;   // per-track check floor
     private bool m_goalReported = false;
 
-    // Cached vanilla block-unlock state (index 0..19). Recomputed only when medal
-    // counts change -- the overlay queries this ~200x/frame.
+    // Cached block-unlock state (index 0..19). Recomputed only when the medal
+    // count changes -- the overlay queries this ~200x/frame.
     private array<bool> m_blockUnlocked;
 
     ItemManager(ApClient@ client) {
@@ -52,7 +45,6 @@ class ItemManager {
     void Reset() {
         m_nextIndex = 0;
         m_itemCounts.DeleteAll();
-        pendingMedalSoundMask = 0;
         m_goalReported = false;
         m_requiredMedal = Medal::Gold;
         DefaultBlockThresholds();
@@ -67,8 +59,8 @@ class ItemManager {
         }
         if (sd.HasKey("unlock_style")) {
             string style = string(sd["unlock_style"]);
-            if (style != "" && style != "vanilla")
-                Log::Warn("unsupported unlock_style '" + style + "' -- running vanilla");
+            if (style != "" && style != "progressive")
+                Log::Warn("unsupported unlock_style '" + style + "' -- running progressive");
         }
         if (sd.HasKey("goal")) {
             string goal = string(sd["goal"]);
@@ -82,7 +74,7 @@ class ItemManager {
                 for (int i = 0; i < BLOCK_COUNT; i++) m_blockThresholds[i] = int(bt[i]);
             }
         }
-        Log::Info("slot_data: unlock_style=vanilla goal=campaign_finish medals_required="
+        Log::Info("slot_data: unlock_style=progressive goal=campaign_finish medals_required="
                   + MEDAL_SUFFIX[int(m_requiredMedal)]);
         RecomputeBlocks();
     }
@@ -94,11 +86,12 @@ class ItemManager {
         return Medal::Gold;
     }
 
-    // Recompute the 20 cached block-unlock bools from current medal counts.
+    // Recompute the 20 cached block-unlock bools from the current Progressive
+    // Medal count.
     void RecomputeBlocks() {
+        int held = ItemCount(PROGRESSIVE_MEDAL_ITEM);
         for (int i = 0; i < BLOCK_COUNT; i++) {
-            m_blockUnlocked[i] = i <= 0
-                || MedalCount(BlockGrade(i)) >= m_blockThresholds[i];
+            m_blockUnlocked[i] = i <= 0 || held >= m_blockThresholds[i];
         }
     }
 
@@ -131,13 +124,6 @@ class ItemManager {
         return n;
     }
 
-    // How many "<grade> Medal" items we have received.
-    int MedalCount(Medal g) const {
-        int64 n = 0;
-        m_itemCounts.Get(MedalItemName(g), n);
-        return int(n);
-    }
-
     // The per-track check floor from slot_data (default Gold). A bare finish is
     // still tracked for the milestones / goal regardless of this.
     Medal EffectiveRequiredMedal() const {
@@ -146,13 +132,6 @@ class ItemManager {
 
     int ItemCount(const string &in name) const {
         int64 n = 0; m_itemCounts.Get(name, n); return int(n);
-    }
-
-    private string MedalItemName(Medal g) const {
-        if (g == Medal::Bronze) return "Bronze Medal";
-        if (g == Medal::Silver) return "Silver Medal";
-        if (g == Medal::Gold)   return "Gold Medal";
-        return "";
     }
 
     void OnReceivedItems(Json::Value@ cmd) {
@@ -172,17 +151,16 @@ class ItemManager {
             return;
         }
 
-        bool isReplay = index == 0;
         for (uint i = 0; i < arr.Length; i++) {
             int itemId = arr[i]["item"];
-            Apply(m_client.data.ItemName(itemId), isReplay);
+            Apply(m_client.data.ItemName(itemId));
         }
         m_nextIndex = index + arr.Length;
         RecomputeBlocks();
         CheckGoal();
     }
 
-    private void Apply(const string &in itemName, bool isReplay) {
+    private void Apply(const string &in itemName) {
         // Everything is counted (medals, filler, traps). Use the int64 Get/Set
         // overloads explicitly -- the generic dictionary ?&out path does not
         // reliably round-trip a 32-bit int here.
@@ -191,22 +169,6 @@ class ItemManager {
         count += 1;
         m_itemCounts.Set(itemName, count);
         Log::Info("Received " + itemName + " (x" + count + ")");
-
-        // Queue the medal voice line for a genuinely new medal item (never on a
-        // Sync replay -- that would blast every medal you already hold).
-        if (!isReplay) {
-            int tier = MedalTierFromItemName(itemName);
-            if (tier >= int(Medal::Bronze) && tier <= int(Medal::Gold))
-                pendingMedalSoundMask |= (1 << tier);
-        }
-    }
-
-    // "Bronze Medal" -> 1, "Silver Medal" -> 2, "Gold Medal" -> 3, else 0.
-    private int MedalTierFromItemName(const string &in name) const {
-        if (name == "Bronze Medal") return int(Medal::Bronze);
-        if (name == "Silver Medal") return int(Medal::Silver);
-        if (name == "Gold Medal")   return int(Medal::Gold);
-        return 0;
     }
 
     // Goal: finish (any medal, or none) all 200 campaign tracks. Tracked
