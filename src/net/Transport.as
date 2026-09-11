@@ -21,6 +21,12 @@ namespace Transport {
     enum State { Idle, Connecting, Handshaking, Open, Closed, Failed }
 }
 
+// Client-initiated keepalive: if we haven't sent anything in a while, send a WS
+// ping ourselves. Guards against idle disconnects from the AP server's own
+// ping/pong timeout or an in-between proxy/NAT dropping a quiet connection --
+// either way, traffic in either direction resets the idle clock.
+const uint64 TRANSPORT_KEEPALIVE_INTERVAL_MS = 30000;
+
 class Transport {
     private Net::Socket@ m_sock;
     private Transport::State m_state = Transport::State::Idle;
@@ -34,6 +40,8 @@ class Transport {
     private uint16 m_port = 0;
     private bool m_secure = false;
     private string m_path = "/";
+
+    private uint64 m_lastSendMs = 0;   // for the keepalive ping timer
 
     Transport::State get_State() const { return m_state; }
     string get_LastError() const { return m_lastError; }
@@ -78,7 +86,12 @@ class Transport {
             if (r == 0) return msgs;         // need more bytes
             if (r < 0) return msgs;          // Fail() already called
             m_state = Transport::State::Open;
+            m_lastSendMs = Time::Now;
             Log::Info("WebSocket open");
+        }
+
+        if (m_state == Transport::State::Open && ShouldSendKeepalive(m_lastSendMs, Time::Now)) {
+            SendFrame(0x9, "");
         }
 
         while (m_state == Transport::State::Open) {
@@ -210,8 +223,13 @@ class Transport {
                 Log::Info("server sent close frame");
                 Close();
                 break;
-            case 0x9: SendFrame(0xA, f.payload); break;   // ping -> pong
-            case 0xA: break;                              // pong
+            case 0x9:                                      // ping -> pong
+                if (S_Trace) Log::Trace("<< ping (server), replying pong");
+                SendFrame(0xA, f.payload);
+                break;
+            case 0xA:
+                if (S_Trace) Log::Trace("<< pong");
+                break;
         }
     }
 
@@ -245,7 +263,9 @@ class Transport {
 
         b.Seek(0);
         m_sock.Write(b, b.GetSize());
+        m_lastSendMs = Time::Now;
         if (S_Trace && opcode == 0x1) Log::Trace(">> " + payload);
+        else if (S_Trace && opcode == 0x9) Log::Trace(">> ping (keepalive)");
     }
 
     private void Fail(const string &in why) {
@@ -254,6 +274,13 @@ class Transport {
         Log::Error("Transport: " + why);
         if (m_sock !is null) { m_sock.Close(); @m_sock = null; }
     }
+}
+
+// Pure threshold check for the client-initiated keepalive, pulled out of Pump()
+// so it's testable without a live Net::Socket (asrun's socket dependencies are
+// inert stubs -- see tools/as/README.md).
+bool ShouldSendKeepalive(uint64 lastSendMs, uint64 nowMs) {
+    return nowMs - lastSendMs >= TRANSPORT_KEEPALIVE_INTERVAL_MS;
 }
 
 // One parsed inbound frame. `consumed` is how many bytes it occupied in the
