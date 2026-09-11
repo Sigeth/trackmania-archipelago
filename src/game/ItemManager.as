@@ -19,6 +19,15 @@ class ItemManager {
     private int m_nextIndex = 0;             // ReceivedItems cursor
     private dictionary m_itemCounts;         // itemName -> int (medals / filler)
 
+    // Bitmask of medal tiers newly received since the game thread last drained it
+    // (bit (1<<Medal): Bronze->2, Silver->4, Gold->8). Written here (client
+    // coroutine), read+cleared in Update() which then plays the voice line --
+    // Audio must not be touched off the game thread. Same single-field
+    // cross-thread hand-off style as GameState.pendingFinish; an int read/write
+    // is atomic, and losing the exact repeat count is fine (one "Gold medal!"
+    // for a batch of three beats three at once).
+    int pendingMedalSoundMask = 0;
+
     // ---- slot_data ----
     private array<int> m_blockThresholds;
     private Medal m_requiredMedal = Medal::Gold;   // per-track check floor
@@ -43,6 +52,7 @@ class ItemManager {
     void Reset() {
         m_nextIndex = 0;
         m_itemCounts.DeleteAll();
+        pendingMedalSoundMask = 0;
         m_goalReported = false;
         m_requiredMedal = Medal::Gold;
         DefaultBlockThresholds();
@@ -162,16 +172,17 @@ class ItemManager {
             return;
         }
 
+        bool isReplay = index == 0;
         for (uint i = 0; i < arr.Length; i++) {
             int itemId = arr[i]["item"];
-            Apply(m_client.data.ItemName(itemId));
+            Apply(m_client.data.ItemName(itemId), isReplay);
         }
         m_nextIndex = index + arr.Length;
         RecomputeBlocks();
         CheckGoal();
     }
 
-    private void Apply(const string &in itemName) {
+    private void Apply(const string &in itemName, bool isReplay) {
         // Everything is counted (medals, filler, traps). Use the int64 Get/Set
         // overloads explicitly -- the generic dictionary ?&out path does not
         // reliably round-trip a 32-bit int here.
@@ -180,6 +191,22 @@ class ItemManager {
         count += 1;
         m_itemCounts.Set(itemName, count);
         Log::Info("Received " + itemName + " (x" + count + ")");
+
+        // Queue the medal voice line for a genuinely new medal item (never on a
+        // Sync replay -- that would blast every medal you already hold).
+        if (!isReplay) {
+            int tier = MedalTierFromItemName(itemName);
+            if (tier >= int(Medal::Bronze) && tier <= int(Medal::Gold))
+                pendingMedalSoundMask |= (1 << tier);
+        }
+    }
+
+    // "Bronze Medal" -> 1, "Silver Medal" -> 2, "Gold Medal" -> 3, else 0.
+    private int MedalTierFromItemName(const string &in name) const {
+        if (name == "Bronze Medal") return int(Medal::Bronze);
+        if (name == "Silver Medal") return int(Medal::Silver);
+        if (name == "Gold Medal")   return int(Medal::Gold);
+        return 0;
     }
 
     // Goal: finish (any medal, or none) all 200 campaign tracks. Tracked

@@ -46,6 +46,15 @@ bool S_BlockLockedTracks = true;
 [Setting category="Behaviour" name="Show in-game notifications when this slot receives an item or checks a location"]
 bool S_Notifications = true;
 
+[Setting category="Behaviour" name="Show a medal celebration when you finish a campaign track"]
+bool S_MedalSplash = true;
+
+[Setting category="Behaviour" name="Play the medal voice lines (on a received medal item, and on a Gold/Author finish)"]
+bool S_MedalSound = true;
+
+[Setting category="Behaviour" name="Medal voice line volume" min=0 max=1]
+float S_MedalSoundVolume = 0.6f;
+
 [Setting category="Debug" name="Verbose protocol logging"]
 bool S_Trace = false;
 

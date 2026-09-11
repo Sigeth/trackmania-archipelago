@@ -29,3 +29,8 @@ Thumbs.db
 
 # Local, non-committed config
 *.local.toml
+
+# Extracted native game sound files (Nadeo's copyrighted audio, ripped from the
+# Turbo packs by the player -- see assets/README.md). Never commit these.
+/assets/*.wav
+/assets/*.ogg

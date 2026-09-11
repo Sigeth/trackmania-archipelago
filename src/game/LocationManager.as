@@ -27,6 +27,15 @@ class LocationManager {
 
     private dictionary m_finishedTracks; // trackLabel -> true (any completion)
 
+    // What the most recent OnFinish() armed -- read once by Main.as to build the
+    // medal splash (same-thread hand-off, like GameState.pendingFinish).
+    private array<string> m_lastArmedTiers;   // medal suffixes, e.g. ["Gold","Author"]
+    private string m_lastMilestone;           // "" or a milestone location name
+    bool lastFinishEarnedCheck = false;
+
+    array<string>@ get_LastArmedTiers() { return m_lastArmedTiers; }
+    string get_LastMilestone() const { return m_lastMilestone; }
+
     // Per-campaign-number medal-tier bitmasks, cached -- the overlay asks for
     // these ~200x/frame. m_availMask is fixed once the seed is known; m_checkedMask
     // is rebuilt lazily after any check lands. Indexed 1..200.
@@ -47,6 +56,9 @@ class LocationManager {
         m_checkedSet.DeleteAll();
         m_knownIds.DeleteAll();
         m_finishedTracks.DeleteAll();
+        m_lastArmedTiers.Resize(0);
+        m_lastMilestone = "";
+        lastFinishEarnedCheck = false;
         for (int n = 0; n <= 200; n++) { m_availMask[n] = 0; m_checkedMask[n] = 0; }
         m_checkedMaskDirty = true;
     }
@@ -157,6 +169,10 @@ class LocationManager {
     void OnFinish(FinishEvent@ ev) {
         Log::Trace("OnFinish " + ev.trackLabel + " medal=" + int(ev.medal));
 
+        m_lastArmedTiers.Resize(0);
+        m_lastMilestone = "";
+        lastFinishEarnedCheck = false;
+
         bool newFinish = !m_finishedTracks.Exists(ev.trackLabel);
         m_finishedTracks.Set(ev.trackLabel, true);
 
@@ -172,6 +188,8 @@ class LocationManager {
             if (id < 0 || !KnownLocation(id)) continue;   // not a location this slot defines
             if (IsChecked(id) || IsPending(id)) continue;
             m_pendingSend.InsertLast(id);
+            m_lastArmedTiers.InsertLast(MEDAL_SUFFIX[tier]);
+            lastFinishEarnedCheck = true;
             Log::Info("Location armed: " + locName);
         }
 
@@ -190,22 +208,27 @@ class LocationManager {
                 blockDone = false; break;
             }
         }
-        if (blockDone) ArmByName(BlockCompleteLocation(blockIndex));
+        if (blockDone && ArmByName(BlockCompleteLocation(blockIndex)))
+            m_lastMilestone = BlockCompleteLocation(blockIndex);
 
         int tierIdx = TierIndexForBlock(blockIndex);
         bool tierDone = true;
         for (int n = tierIdx * 40 + 1; n <= tierIdx * 40 + 40; n++) {
             if (!m_finishedTracks.Exists(TrackLabel(n))) { tierDone = false; break; }
         }
-        if (tierDone) ArmByName(TierCompleteLocation(blockIndex));
+        if (tierDone && ArmByName(TierCompleteLocation(blockIndex)))
+            m_lastMilestone = TierCompleteLocation(blockIndex);
     }
 
-    private void ArmByName(const string &in locName) {
-        if (locName == "") return;
+    // Returns true when it actually queued a new check.
+    private bool ArmByName(const string &in locName) {
+        if (locName == "") return false;
         int id = m_client.data.LocationId(locName);
-        if (id < 0 || !KnownLocation(id) || IsChecked(id) || IsPending(id)) return;
+        if (id < 0 || !KnownLocation(id) || IsChecked(id) || IsPending(id)) return false;
         m_pendingSend.InsertLast(id);
+        lastFinishEarnedCheck = true;
         Log::Info("Milestone armed: " + locName);
+        return true;
     }
 
     // Push everything resolved-but-unsent to the server.

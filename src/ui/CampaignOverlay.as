@@ -22,7 +22,8 @@
 // ML->pixel transform exposed by this build (menu mouse coords are a different
 // space), hence the manual calibration.
 //
-// This is the plugin's only Render(); nvg may only be used here. Every cast is
+// Drawn from the plugin's single Render() (Main.as), which also draws the medal
+// splash. nvg may only be used from that Render() call chain. Every cast here is
 // null-guarded -- an unrecognised menu just shows nothing.
 
 namespace Overlay {
@@ -249,7 +250,8 @@ namespace Overlay {
     }
 }
 
-void Render() {
+// Called from the plugin's single Render() in Main.as.
+void RenderCampaignOverlay() {
     if (!S_CampaignOverlay) return;
     if (g_client is null || !g_client.IsReady) return;
 

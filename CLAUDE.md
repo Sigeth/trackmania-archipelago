@@ -35,8 +35,13 @@ fetches into `tools/as/build/_deps/`) and the load fails with `#include` /
 set "AP=%USERPROFILE%\OpenplanetTurbo\Plugins\Archipelago"
 mkdir "%AP%"
 mklink /J "%AP%\src" "%CD%\src"
+mklink /J "%AP%\assets" "%CD%\assets"
 mklink /H "%AP%\info.toml" "%CD%\info.toml"
 ```
+
+`assets/` holds runtime files loaded by plugin-relative path
+(`Audio::LoadSample("assets/voice-medal-gold.wav")`) — no `.as` in there, so the junction is
+safe. It ships in the `.op` too.
 
 `/J` (junction) and `/H` (hard link) need no elevation, unlike `mklink /D`. The
 hard link breaks if `info.toml` is rewritten out of place (a `git` checkout that
@@ -62,7 +67,7 @@ Style: 4-space indent, `PascalCase` methods, `m_` private fields, `S_` settings,
   release is due, runs `tools/bump_version.py` (the three version spots),
   regenerates `CHANGELOG.md`, runs `tools/package.sh`, commits the bumped files
   back to `main` (`chore(release): … [skip ci]`), tags `vX.Y.Z`, and publishes a
-  GitHub Release with `dist/Archipelago.op` (`info.toml` + `src/`) and
+  GitHub Release with `dist/Archipelago.op` (`info.toml` + `src/` + `assets/`) and
   `dist/trackmania_turbo.apworld` (the `apworld/trackmania_turbo/` folder, minus
   `test/` / `__pycache__`).
 - Pre-1.0: `feat:` → minor, `fix:` → patch, `feat!:` / `BREAKING CHANGE:` →
@@ -206,7 +211,17 @@ the online Openplanet docs describe the newer TM2020 build.
 - **Writing Nadeo ManiaLink control fields does NOT stick.** Every tile has a
   hidden native `Quad_Locked` (`locked-2x2.dds`); setting `.Visible = true` on it
   executes but the menu's own script re-hides it the same frame, so it never
-  renders. No MLHook for Turbo. Overlays must be *drawn* (`nvg`), not injected.
+  renders. No MLHook for Turbo. Overlays must be *drawn* (`nvg` /
+  `UI::Get*DrawList`), not injected. The game's own medal/record ceremony also
+  can't be triggered from a plugin (`Solo_SetNewRecord`,
+  `PlayUiSound(EUISound::Record)` etc. are all ManiaScript-only) — hence
+  `MedalSplash.as` draws its own.
+- **Driving the campaign menu's medal display from Archipelago is not feasible**
+  on this build (deep dive 2026-09-09; see the user memory
+  `ap-only-campaign-medals`). The menu loads all 200 records once in a racy async
+  burst into one shared buffer, never re-queries (not even after finishing that
+  map), and no script proc fires on the save. `RecordGuard.as` /
+  `S_FreshProfile` were removed.
 
 ### Archipelago protocol notes
 
@@ -236,11 +251,13 @@ the online Openplanet docs describe the newer TM2020 build.
 | `src/ap/ApClient.as` | Session state machine (`Ap::Phase`), handshake, dispatch |
 | `src/game/GameState.as` | Reads the Turbo nods; emits `FinishEvent` on a race finish; bounces the player out of locked tracks |
 | `src/game/TrackTable.as` | Campaign map number (1–200) ⇄ `"<Tier> <Env> NN"` label |
-| `src/game/LocationManager.as` | finish → location id; dedupe; batched send; per-track checked-medal mask |
+| `src/game/LocationManager.as` | finish → location id; dedupe; batched send; per-track checked-medal mask; reports what a finish armed (for the splash) |
 | `src/game/ItemManager.as` | consumes `ReceivedItems`; counts `<grade> Medal` items; client-enforced 20-block unlock gate |
 | `src/ui/Window.as` | Status window + `RenderMenu()` entry + chat panel (log view + input; sends `Say`) |
 | `src/ui/Notify.as` | `UI::ShowNotification` toasts, raised from `ApClient.OnPrintJson` for `ItemSend`/`ItemCheat` routes touching this slot — server's own sentence with our slot as "you"/"You" (`S_Notifications`) |
-| `src/ui/CampaignOverlay.as` | `Render()` — nvg lock / medal-pip markers on the series grid *and* the per-series track picker |
+| `src/Main.as` `Render()` | The plugin's single `Render()` — `RenderCampaignOverlay()` then `MedalSplash::Render()` |
+| `src/ui/CampaignOverlay.as` | `RenderCampaignOverlay()` — nvg lock / medal-pip markers on the series grid *and* the per-series track picker |
+| `src/ui/MedalSplash.as` | Centred foreground-draw-list medal banner on every campaign finish + the game's extracted announcer voice lines (`assets/voice-medal-*.wav`) on a received medal item and on a Gold/Author finish that armed a check |
 
 ## Naming contract with the `.apworld`
 
@@ -295,5 +312,25 @@ If you change one of these, change it on both sides.
   `RaceState == Finished` (fallback: `CGamePlaygroundScript.Solo_NewRecordSequenceInProgress`).
 - **`wss://` path.** Only `ws://` (local) is exercised so far; test TLS +
   fragmented inbound frames against `archipelago.gg`.
+- **Medal splash — needs an in-game look.** `MedalSplash.as` shows a centred
+  banner on every campaign finish (track + earned medal, plus "Checked: …" /
+  milestone lines when connected). Sound is the game's own extracted announcer
+  voice lines (`assets/voice-medal-{bronze,silver,gold,author}.wav`), **native-only,
+  not shipped** — a missing file just means that tier is silent, no synthesised
+  fallback (user decision). All sound goes through `MedalSplash::PlayTierSound()`,
+  which MUST run on the game thread. Two triggers:
+  - a **received medal item** (Bronze/Silver/Gold) → that tier's line.
+    `ItemManager.pendingMedalSoundMask` (bitmask, written in the client coroutine
+    on a non-replay `ReceivedItems`) is drained in `Update()` — highest tier only
+    per batch.
+  - a **Gold or Author finish that armed a check** → Gold / Author line (Author
+    wins when the run cleared both; `SplashInfo.medal` is already the single best
+    tier). Bronze/Silver finishes are silent.
+  The game's own jingle can't be triggered directly (`PlayUiSound` /
+  `PlaySoundLibrary` are ManiaScript-only, pak audio is `CPlugFileSnd`);
+  `assets/README.md` has the extraction targets. `Audio::LoadSample` throws on a
+  missing file so every load is try/catch-guarded. VERIFY placement/legibility at
+  1920×1080 and on the in-map results screen; "Test medal splash" + per-tier
+  "Audition voice lines" buttons are in the window's "Medal splash" section.
 - Debug traces in `GameState` / `LocationManager` / `ItemManager` / `Transport`
   are gated on `S_Trace` and can be trimmed once bring-up settles.

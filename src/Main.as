@@ -33,12 +33,33 @@ void Update(float dt) {
 
     g_gameState.Update();
 
-    // Hand any finish event to the location manager.
+    // Hand any finish event to the location manager, then celebrate it.
     if (g_gameState.pendingFinish !is null) {
+        auto ev = g_gameState.pendingFinish;
+        bool earnedCheck = false;
+        string checkedLine, milestoneLine;
         if (g_client.IsReady) {
-            g_client.locations.OnFinish(g_gameState.pendingFinish);
+            g_client.locations.OnFinish(ev);
+            earnedCheck = g_client.locations.lastFinishEarnedCheck;
+            checkedLine = ChecksLine(g_client.locations.LastArmedTiers);
+            milestoneLine = g_client.locations.LastMilestone;
         }
+        MedalSplash::Trigger(MakeSplash(ev, earnedCheck, checkedLine, milestoneLine));
         @g_gameState.pendingFinish = null;
+    }
+
+    // Play the voice line for any medal item received since the last frame.
+    // Drained here (game thread) because Audio must not be touched from the
+    // client coroutine. Highest tier only when several landed in one batch.
+    int soundMask = g_client.items.pendingMedalSoundMask;
+    if (soundMask != 0) {
+        g_client.items.pendingMedalSoundMask = 0;
+        for (int tier = int(Medal::Gold); tier >= int(Medal::Bronze); tier--) {
+            if ((soundMask & (1 << tier)) != 0) {
+                MedalSplash::PlayTierSound(tier);
+                break;
+            }
+        }
     }
 
     // Retry queued checks once the session is (re)established.
@@ -50,9 +71,28 @@ void Update(float dt) {
     }
 }
 
+// The plugin's single Render() (nvg / foreground draw list). Dispatches to the
+// campaign-menu overlay (its own menu guard) and the medal splash (drawn anywhere,
+// including the in-map results screen).
+void Render() {
+    RenderCampaignOverlay();
+    MedalSplash::Render();
+}
+
 void OnDestroyed() { Shutdown(); }
 void OnDisabled()  { Shutdown(); }
 
 void Shutdown() {
     if (g_client !is null) g_client.Disconnect();
+}
+
+// "Checked: Gold, Author" from the tier suffixes LocationManager just armed.
+string ChecksLine(array<string>@ tiers) {
+    if (tiers is null || tiers.Length == 0) return "";
+    string s = "Checked: ";
+    for (uint i = 0; i < tiers.Length; i++) {
+        if (i > 0) s += ", ";
+        s += tiers[i];
+    }
+    return s;
 }

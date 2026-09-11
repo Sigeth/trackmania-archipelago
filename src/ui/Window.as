@@ -26,6 +26,17 @@ void RenderInterface() {
         UI::Separator();
         RenderChat();
         UI::Separator();
+        if (UI::CollapsingHeader("Medal splash")) {
+            if (UI::Button("Test medal splash")) MedalSplash::TriggerTest();
+            UI::TextDisabled("Audition voice lines:");
+            if (UI::Button("Bronze")) MedalSplash::PlayTierSound(int(Medal::Bronze));
+            UI::SameLine();
+            if (UI::Button("Silver")) MedalSplash::PlayTierSound(int(Medal::Silver));
+            UI::SameLine();
+            if (UI::Button("Gold")) MedalSplash::PlayTierSound(int(Medal::Gold));
+            UI::SameLine();
+            if (UI::Button("Author")) MedalSplash::PlayTierSound(int(Medal::Author));
+        }
         if (UI::CollapsingHeader("Overlay alignment")) {
             UI::TextWrapped(Overlay::DebugStatus());
             UI::TextDisabled("If the overlay is off (different resolution or");
