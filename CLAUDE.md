@@ -161,6 +161,20 @@ RFC 6455 with none). Closing it would mean porting a pure-script inflater
 (~300–500 lines). Deferred until a future AP server actually rejects uncompressed
 clients. See workspace `CLAUDE.md` open question 1.
 
+**Known issue — idle disconnect after ~10 minutes (2026-09-12, not yet
+root-caused).** Reported live: the local `MultiServer.py` test server closes
+the connection after roughly 10 minutes idle even though `Transport.as` is
+provably replying to every server ping (`<< ping (server), replying pong` in
+the trace log) and `SendFrame` refreshes `m_lastSendMs` on every send,
+including that pong. So our RFC 6455 ping/pong handling looks correct; the
+timeout is happening somewhere that doesn't treat control frames as
+"activity" — maybe `MultiServer`'s own idle-connection reaper (keyed off real
+message traffic), maybe a NAT/router/firewall TCP idle timeout unrelated to
+the WS layer, maybe specific to local dev and not `archipelago.gg`. See
+workspace `CLAUDE.md` open question 1 for the full note and what to check
+first (`TRANSPORT_KEEPALIVE_INTERVAL_MS`, `Transport.as:28`, actually firing
+every 30s).
+
 ### Openplanet Turbo API traps
 
 - **`dictionary` has no `Get(string, int&out)`** — only `int64&out`, `double&out`,
@@ -267,7 +281,8 @@ the online Openplanet docs describe the newer TM2020 build.
 | `src/game/GameState.as` | Reads the Turbo nods; emits `FinishEvent` on a race finish; bounces the player out of locked tracks |
 | `src/game/TrackTable.as` | Campaign map number (1–200) ⇄ `"<Tier> <Env> NN"` label |
 | `src/game/LocationManager.as` | finish → location id; dedupe; batched send; per-track checked-medal mask; reports what a finish armed (for the splash) |
-| `src/game/ItemManager.as` | consumes `ReceivedItems`; counts `"Progressive Medal"` items; client-enforced 20-block unlock gate |
+| `src/game/ItemManager.as` | consumes `ReceivedItems`; counts `"Progressive Medal"` items; client-enforced 20-block unlock gate; queues trap item names for `TrapManager` |
+| `src/game/TrapManager.as` | Applies trap items on the game thread: blind (nvg overlay), giant/tiny car (`CTrackManiaRace.ScaleCarValue`, unverified), respawn (`BackToMainMenu()`) |
 | `src/ui/Window.as` | Status window + `RenderMenu()` entry + chat panel (log view + input; sends `Say`) |
 | `src/ui/Notify.as` | `UI::ShowNotification` toasts, raised from `ApClient.OnPrintJson` for `ItemSend`/`ItemCheat` routes touching this slot — server's own sentence with our slot as "you"/"You" (`S_Notifications`) |
 | `src/Main.as` `Render()` | The plugin's single `Render()` — `RenderCampaignOverlay()` then `MedalSplash::Render()` |
@@ -306,6 +321,14 @@ If you change one of these, change it on both sides.
   (always `"campaign_finish"`) — still sent, plugin warns on anything else;
   `block_thresholds` (20 ints); `medals_required` (`bronze|silver|gold|author`,
   the per-track check floor).
+- Trap items (`TRAP_NAMES` in the apworld's `__init__.py`, `TRAP_*` constants
+  in `TrackTable.as`): `"Blind Trap"`, `"Giant Car Trap"`, `"Tiny Car Trap"`,
+  `"Respawn Trap"`. `ItemClassification.trap`; the apworld's `trap_chance`
+  option (0..100%, default 0) rolls from `ACTIVE_TRAP_NAMES` — currently just
+  `"Blind Trap"`, the only one confirmed working — in place of `"Nitro Boost"`
+  filler. No slot_data involved — `TrapManager.as` applies the effect entirely
+  client-side on receipt. See workspace `CLAUDE.md` open question 7 for full
+  in-game test results and why Giant/Tiny Car and Respawn are dormant.
 
 ## Open items
 
@@ -361,3 +384,60 @@ If you change one of these, change it on both sides.
   "Audition voice lines" buttons are in the window's "Medal splash" section.
 - Debug traces in `GameState` / `LocationManager` / `ItemManager` / `Transport`
   are gated on `S_Trace` and can be trimmed once bring-up settles.
+- **Traps — implemented 2026-09-12; only Blind Trap confirmed working.**
+  `TrapManager.as` applies four trap items; `ItemManager` queues their names
+  from `OnReceivedItems` (network thread) and `Main.as` drains the queue once
+  per `Update()` so the effects run on the game thread. Tested live against a
+  local server + `!getitem` cheat while the user played.
+  **Blind Trap** (nvg overlay, `S_BlindDurationSec` default 2s — was briefly
+  8s, shortened per user feedback) — **confirmed working.** This is the only
+  trap `ACTIVE_TRAP_NAMES` (in the apworld's `__init__.py`) selects; the other
+  three stay in `TRAP_NAMES` / the id map but are never handed out.
+  **Giant Car Trap / Tiny Car Trap** (`CTrackManiaRace.ScaleCarValue` via
+  `app.CurrentPlayground.Interface` cast to `CTrackManiaRaceInterface` →
+  `.Race`) — **confirmed NOT working**, correcting an earlier premature
+  "confirmed" note here: the write/restore is clean in the log (no warning,
+  correct value both ways) at the exact moment the user reported the car
+  never visibly resized. A clean log trace only proves the code ran, not that
+  the effect was visible — don't mark a trap VERIFIED without the user's eyes
+  on it. Car-scale defaults were bumped 2.2/0.45 → 4.0/0.15 before this was
+  caught (user: first pass wasn't dramatic enough) — those settings are now
+  dormant pending a fix.
+  **Lead tried via turbo.openplanet.dev and FALSIFIED in-game (2026-09-12).**
+  That site showed `CTrackManiaRaceRules::EnableScaleCar` and both
+  `CTrackManiaPlayer`/`CTmRaceRulesPlayer::TinyCar` as plain writable bools,
+  so `TrapManager.StartCarScale()` briefly forced `EnableScaleCar` on before
+  writing `ScaleCarValue`. That broke the real in-game compile: `The property
+  has no set accessor`. Ground truth is the local dump Openplanet actually
+  compiles against — `%USERPROFILE%\OpenplanetTurbo\OpenplanetTurbo.json`,
+  grep for `"n":"EnableScaleCar"` / `"n":"TinyCar"` — which marks all three
+  `"c":1` (read-only); the docs site doesn't expose that flag at all. None
+  can be forced from script. Reverted: `CurrentRaceRules()` now only reads
+  `EnableScaleCar` for diagnostic `Log::Trace`, never writes it. **Takeaway:
+  turbo.openplanet.dev tells you a member exists and its shape, not whether
+  Openplanet lets scripts write it — always cross-check `OpenplanetTurbo.json`'s
+  `"c"` flag before coding against a property found there.** `ScaleCarValue`
+  itself remains confirmed writable (no `"c"` flag, range `[0.1, 10]`) and
+  still has no visible in-game effect for an unknown reason — dead end for
+  now; see the header comment in `TrapManager.as`.
+  Also note: `tools/as/gen_stubs.py` used to ignore the `"c"` flag when
+  generating the AngelScript type-check stub, so `tools/as/check.ps1` passed
+  this write clean — the compile error was only caught by an actual in-game
+  plugin reload. **Fixed 2026-09-12:** `engine_classes()` now emits a
+  `"c":1` property as a `get_`-only accessor (no field, so no setter), so
+  `rules.EnableScaleCar = true;` now fails `check.ps1` too. One carve-out:
+  `vec2`/`vec3`/`vec4`/`int2`/`int3`/`nat2`/`nat3`-typed properties are
+  exempted (`FRAGILE_VALUE_TYPES`) because those core classes' copy
+  constructor is an inert stub body, which would make a `get_` accessor
+  silently return a zeroed value instead of failing to compile — see
+  `tools/as/README.md`.
+  **Respawn Trap** (`BackToMainMenu()`) — user feedback: "respawn is not what
+  I wanted" (abandoning the run doesn't read as a respawn), then later folded
+  into "mark everything else not working." Marked not-working as a trap.
+  Candidates for next time: `CTrackManiaMenus.DialogQuitRace_OnRestartMap()`
+  for a real in-place restart (untested — a menu dialog callback, may not
+  behave standalone), drop the trap, or rename it (e.g. "DNF Trap") if the
+  abandon-to-menu effect is ever wanted under an honest name.
+  "Traps" debug buttons (fire the real effect immediately, broken ones
+  labelled as such) are in the window. `trap_chance` defaults to 0 in the
+  apworld, so no seed grows traps without the player opting in.

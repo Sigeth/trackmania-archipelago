@@ -47,14 +47,28 @@ outside it.
 
 **Catches:** syntax errors, unknown identifiers, misspelled / renamed engine
 members, wrong argument count or type, bad return types, missing returns, most
-operator misuse — i.e. the errors that would fail `Reload plugin`.
+operator misuse, and writes to a read-only engine property — i.e. the errors
+that would fail `Reload plugin`. That last one closed a real gap: a property
+whose dump record carries `"c":1` (read-only in the real build, e.g.
+`CTrackManiaRaceRules.EnableScaleCar`) used to be emitted as an ordinary
+writable field, so `rules.EnableScaleCar = true;` passed the checker clean and
+was only ever caught by an actual in-game reload (`The property has no set
+accessor`). `gen_stubs.py`'s `engine_classes()` now emits such a property as a
+`get_`-only accessor instead of a field, so the same write fails to compile
+here too.
 
 **Does not catch:** the generated API classes are AngelScript *script classes*,
-not the engine's registered interface, so value-vs-reference semantics, exact
-const-correctness, and property-accessor edge cases are approximate. `Transport`,
-`GameState` and the UI code are compile-checked only — their engine / socket
-dependencies are inert stubs, so they are never executed. This is a fast
-pre-flight, **not** a substitute for reloading in-game.
+not the engine's registered interface, so value-vs-reference semantics and
+property-accessor edge cases are approximate. One concrete carve-out:
+`vec2`/`vec3`/`vec4`/`int2`/`int3`/`nat2`/`nat3`-typed properties are never
+read-only here (`FRAGILE_VALUE_TYPES` in `gen_stubs.py`) even when the real
+build marks them so, because these core classes' copy constructor is an inert
+`{}` body in this stub (see the comment there) — a `get_` accessor returning
+one by value would silently come back zeroed instead of failing loudly, which
+is worse than not enforcing read-only for that handful of properties.
+`Transport`, `GameState` and the UI code are compile-checked only — their
+engine / socket dependencies are inert stubs, so they are never executed.
+This is a fast pre-flight, **not** a substitute for reloading in-game.
 
 ## Refreshing the API after an Openplanet update
 

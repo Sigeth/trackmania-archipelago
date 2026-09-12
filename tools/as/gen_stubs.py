@@ -126,6 +126,19 @@ def strip_to_typename(t: str) -> str:
 
 _ARRAYish = ("MwFastBuffer", "MwFastArray", "MwSArray", "MwRefBuffer", "MwArray", "Array")
 
+# core value classes (emitted by core_classes()) whose behaviours --
+# including the copy constructor -- are unconditionally given an inert "{}"
+# body, same as every other core-class constructor. A
+# get_ accessor that does `return _backingField;` for one of these returns
+# a value *constructed* at the call site, i.e. through that no-op copy
+# constructor -- so it silently comes back zeroed no matter what the
+# backing field held (caught via Test_GridBounds_bbox_from_visible_tiles
+# regressing when AbsolutePosition_V3 (vec2) first got the get_-accessor
+# treatment). Plain field access never hits a constructor, so this only
+# bites read-only properties of these specific types. Excluded from
+# read-only enforcement below rather than modeled as get_-only.
+FRAGILE_VALUE_TYPES = {"vec2", "vec3", "vec4", "int2", "int3", "nat2", "nat3"}
+
 
 def map_engine_arglist(a: str) -> str:
     """Sanitise an engine method arg string ('CMwNod@ Nod, MwFastBuffer<wstring>& X')
@@ -455,7 +468,27 @@ def engine_classes(turbo: dict, out: list[str]) -> None:
                 mine.add(n)
                 at = map_engine_type(t)
                 note_type(at)
-                members.append(f"    {at} {n};")
+                if m.get("c") == 1 and at not in FRAGILE_VALUE_TYPES:
+                    # Read-only in the real Openplanet build ("c":1 in the
+                    # dump, e.g. CTrackManiaRaceRules.EnableScaleCar). Model
+                    # that with a get_ accessor and no matching set_ --
+                    # AngelScript's virtual-property mode
+                    # (asEP_PROPERTY_ACCESSOR_MODE=2, set in host/main.cpp)
+                    # lets script code still read `obj.Name` as a call to
+                    # get_Name(), but with no set_Name to route `obj.Name = x`
+                    # through, that assignment fails to compile -- same as
+                    # the real read-only engine property does.
+                    #
+                    # `_Name` is a plain writable backing field, public only
+                    # so the offline unit tests under tools/as/tests/ can
+                    # build fixture object graphs (e.g. a fake ManiaLink
+                    # tree) without a real engine to populate them from. Real
+                    # Openplanet has no such member and plugin src/**.as code
+                    # has no legitimate reason to reference it.
+                    members.append(f"    {at} _{n};")
+                    members.append(f"    {at} get_{n}() const {{ return _{n}; }}")
+                else:
+                    members.append(f"    {at} {n};")
         own_members[cn] = mine
         block = "\n".join(members)
         out.append(f"class {cn}{base} {{\n{block}\n}}" if block else f"class {cn}{base} {{}}")

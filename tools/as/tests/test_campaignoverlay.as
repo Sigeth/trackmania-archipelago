@@ -11,13 +11,25 @@
 // CGameManialinkFrame et al. are plain data classes with working fields in
 // this stub, not opaque natives) and assert the fix is pan-invariant.
 //
-// Two stub gotchas this file works around:
+// Three stub gotchas this file works around:
 //  - vec2's constructors are no-ops in the generated stub (only the C++ host's
 //    real types are backed by working code; vec2 isn't one of them) -- set
-//    .x/.y on a default-constructed vec2 directly instead of vec2(x, y).
+//    .x/.y on a default-constructed vec2 directly instead of vec2(x, y). For
+//    the same reason gen_stubs.py leaves vec2/vec3/vec4/int2/int3/nat2/nat3
+//    -typed properties as plain writable fields even when read-only in the
+//    real API (FRAGILE_VALUE_TYPES in engine_classes()): a get_ accessor
+//    returning one of these by value would construct the return value
+//    through that no-op copy constructor and silently come back zeroed, so
+//    AbsolutePosition_V3 below is a plain field, not a `_Name` backdoor.
 //  - Math:: functions are likewise no-op stubs (Math::Round always returns 0),
 //    which is why PickerState() uses the free function RoundToInt() instead --
 //    same reasoning as Transport.as's ShouldSendKeepalive.
+//  - ControlId / Controls / MainFrame / LocalPage / UILayers ARE read-only in
+//    real Openplanet, so gen_stubs.py exposes them here only as get_
+//    accessors backed by a `_Name` field (see gen_stubs.py's
+//    engine_classes()). Building a fixture tree from scratch has to go
+//    through that `_Name` backdoor instead of plain assignment -- real
+//    plugin code never needs to and never does.
 
 CGameManialinkFrame@ SetMLPos(CGameManialinkFrame@ ctrl, float x, float y) {
     vec2 p;
@@ -33,16 +45,16 @@ CGameManialinkFrame@ SetMLPos(CGameManialinkFrame@ ctrl, float x, float y) {
 // handle.
 CGameManialinkFrame@ MakeTile(const string &in id, bool visible, float x, float y) {
     CGameManialinkFrame tile;
-    tile.ControlId = id;
+    tile._ControlId = id;
     tile.Visible = visible;
     array<CGameManialinkControl@> noChildren;
-    @tile.Controls = noChildren;
+    @tile._Controls = noChildren;
     return SetMLPos(tile, x, y);
 }
 
 CGameManialinkFrame@ MakeContainer(array<CGameManialinkControl@>@ children) {
     CGameManialinkFrame frame;
-    @frame.Controls = children;
+    @frame._Controls = children;
     return frame;
 }
 
@@ -124,7 +136,7 @@ CGameManiaAppTitle@ MakePickerApp(const string &in seriesLabel, float fabX, floa
         MakeDiffLabel(seriesLabel),   // Controls[3] == "Label_Diff0"
     };
     CGameManialinkFrame@ fab = MakeContainer(fabChildren);
-    fab.ControlId = "FrameAll_Buttons";
+    fab._ControlId = "FrameAll_Buttons";
     SetMLPos(fab, fabX, fabY);
 
     CGameManialinkFrame@ sel = MakeTile("Frame_Selector", true, selX, selY);
@@ -133,17 +145,17 @@ CGameManiaAppTitle@ MakePickerApp(const string &in seriesLabel, float fabX, floa
     CGameManialinkFrame@ main = MakeContainer(mainChildren);
 
     CGameManialinkPage page;
-    @page.MainFrame = main;
+    @page._MainFrame = main;
 
     CGameUILayer l11;
-    @l11.LocalPage = page;
+    @l11._LocalPage = page;
 
     array<CGameUILayer@> layers;
     for (int i = 0; i < 11; i++) layers.InsertLast(null);
     layers.InsertLast(l11);
 
     CGameManiaAppTitle app;
-    @app.UILayers = layers;
+    @app._UILayers = layers;
     return app;
 }
 
@@ -208,18 +220,18 @@ void Test_PickerState_unknown_series_text_returns_negative_one() {
 void Test_MapNumber_from_control_id() {
     CGameManialinkFrame tile;
     array<CGameManialinkControl@> children = { MakeTile("MouseInput_Track_0:0", true, 0.0f, 0.0f) };
-    @tile.Controls = children;
+    @tile._Controls = children;
     AssertEq(Overlay::MapNumber(tile), 1, "row 0 col 0 -> map 1 (White Canyon 01)");
 
     CGameManialinkFrame tile2;
     array<CGameManialinkControl@> children2 = { MakeTile("MouseInput_Track_9:19", true, 0.0f, 0.0f) };
-    @tile2.Controls = children2;
+    @tile2._Controls = children2;
     AssertEq(Overlay::MapNumber(tile2), 200, "row 9 col 19 -> map 200 (Black Stadium 10)");
 }
 
 void Test_MapNumber_no_mouse_input_child_returns_zero() {
     CGameManialinkFrame tile;
     array<CGameManialinkControl@> children = { MakeTile("SomethingElse", true, 0.0f, 0.0f) };
-    @tile.Controls = children;
+    @tile._Controls = children;
     AssertEq(Overlay::MapNumber(tile), 0, "no MouseInput_Track_ child");
 }
