@@ -23,3 +23,13 @@ void AssertEq(bool got, bool want, const string &in what = "") {
         throw((what == "" ? "" : what + ": ") + "expected " + (want ? "true" : "false")
               + ", got " + (got ? "true" : "false"));
 }
+
+// Not Math::Abs(): this AngelScript stub host has no C++-backed Math::* --
+// every Math:: function in the generated stub is a no-op returning a
+// constant, so Math::Abs(anything) is always 0 here. Plain arithmetic instead.
+void AssertEq(float got, float want, const string &in what = "") {
+    float diff = got - want;
+    if (diff < 0) diff = -diff;
+    if (diff > 0.01f)
+        throw((what == "" ? "" : what + ": ") + "expected " + want + ", got " + got);
+}

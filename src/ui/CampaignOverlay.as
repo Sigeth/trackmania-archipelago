@@ -14,13 +14,24 @@
 // the series ("Label_Diff0" text) and environment (which column "Frame_Selector"
 // sits in), then draw at 10 fixed slots (S_Tp* rect).
 //
-// The ManiaLink tile grid occupies a fixed rectangle in ML space (measured
-// in-game): x in [-120.28, 843.74], y in [25.80, -424.20] (y is up). We map that
-// rectangle onto a screen rectangle given as window fractions (S_GridL/T/R/B),
-// tuned once by eye via the Debug "Overlay alignment" sliders (box-preview mode)
-// and persisted. Re-tune for a different resolution/aspect. There is no reliable
-// ML->pixel transform exposed by this build (menu mouse coords are a different
-// space), hence the manual calibration.
+// The ManiaLink tile grid's ML-space origin is NOT fixed: the menu pans the
+// whole FrameAll_Buttons tree depending on which series/environment was last
+// browsed in the track picker (confirmed in-game -- returning from a picker
+// other than White Canyon leaves the series-grid tiles offset). So instead of
+// a probe-measured ML rectangle, the grid bounding box is recomputed every
+// frame from the actually-visible tiles' own AbsolutePosition_V3 (self-
+// calibrating -- immune to whatever pan offset the menu currently has). That
+// live ML rectangle is mapped onto a screen rectangle given as window
+// fractions (S_GridL/T/R/B), tuned once by eye via the Debug "Overlay
+// alignment" sliders (box-preview mode) and persisted -- only the ML<->screen
+// *scale/anchor* needs re-tuning for a different resolution/aspect, not the ML
+// origin. There is no reliable ML->pixel transform exposed by this build (menu
+// mouse coords are a different space), hence the manual calibration.
+//
+// The track-picker's Frame_Selector is subject to the same pan, so its column
+// is read relative to FrameAll_Buttons's own (also panned) position rather
+// than a fixed ML origin -- see PickerState(). VERIFY in-game across all 4
+// environments (only Canyon was confirmed before the pan bug was found).
 //
 // Drawn from the plugin's single Render() (Main.as), which also draws the medal
 // splash. nvg may only be used from that Render() call chain. Every cast here is
@@ -31,12 +42,12 @@ namespace Overlay {
     const float TILE_W = 48.21;
     const float TILE_H = 45.0;
 
-    // ML-space extent of the tile grid (col 0 left / col 19 right, row 0 top /
-    // row 9 bottom). From the probe.
-    const float GRID_L = -120.28;
-    const float GRID_R = 843.74;
-    const float GRID_T = 25.80;
-    const float GRID_B = -424.20;
+    // Not Math::Round(): kept as a free function with no engine/native
+    // dependency (same reasoning as Transport.as's ShouldSendKeepalive) so the
+    // picker's column math can be exercised by a real unit test.
+    int RoundToInt(float x) {
+        return x >= 0 ? int(x + 0.5f) : -int(-x + 0.5f);
+    }
 
     const array<vec4> MEDAL_COL = {
         vec4(0, 0, 0, 0),
@@ -46,13 +57,46 @@ namespace Overlay {
         vec4(0.20, 0.76, 0.42, 1)    // Author
     };
 
-    vec2 ToScreen(float mlx, float mly) {
+    // gridL/R/T/B: the grid's CURRENT ML-space bounding box, recomputed each
+    // frame from the visible tiles (see GridBounds()) -- not a fixed constant,
+    // because the menu can pan the whole tile tree between visits.
+    vec2 ToScreen(float mlx, float mly, float gridL, float gridR, float gridT, float gridB) {
         float w = float(Display::GetWidth());
         float h = float(Display::GetHeight());
-        float fx = (mlx - GRID_L) / (GRID_R - GRID_L);        // 0..1 left..right
-        float fy = (GRID_T - mly) / (GRID_T - GRID_B);        // 0..1 top..bottom
+        float fx = (mlx - gridL) / (gridR - gridL);        // 0..1 left..right
+        float fy = (gridT - mly) / (gridT - gridB);        // 0..1 top..bottom
         return vec2((S_GridL + fx * (S_GridR - S_GridL)) * w,
                     (S_GridT + fy * (S_GridB - S_GridT)) * h);
+    }
+
+    // Live ML-space bounding box of the tile grid, from the tiles actually
+    // present this frame. false if none found (nothing to draw against).
+    bool GridBounds(CGameManialinkFrame@ tiles, float &out gridL, float &out gridR,
+                     float &out gridT, float &out gridB) {
+        bool have = false;
+        float minX = 0, maxX = 0, minY = 0, maxY = 0;
+        for (uint i = 0; i < tiles.Controls.Length; i++) {
+            auto tile = cast<CGameManialinkFrame>(tiles.Controls[i]);
+            if (tile is null || !tile.Visible || !tile.ControlId.StartsWith("Frame_Instance")) continue;
+            // Read .x/.y directly rather than copying the vec2 itself -- see
+            // tools/as/tests/test_campaignoverlay.as for why (vec2's copy
+            // constructor is a no-op in the AS unit-test stub; harmless here,
+            // but this form is what makes the function testable there too).
+            float px = tile.AbsolutePosition_V3.x, py = tile.AbsolutePosition_V3.y;
+            if (!have) { minX = px; maxX = px; minY = py; maxY = py; have = true; }
+            else {
+                if (px < minX) minX = px;
+                if (px > maxX) maxX = px;
+                if (py < minY) minY = py;
+                if (py > maxY) maxY = py;
+            }
+        }
+        if (!have) return false;
+        gridL = minX;
+        gridR = maxX + TILE_W;
+        gridT = maxY;
+        gridB = minY - TILE_H;
+        return true;
     }
 
     // ---- ManiaLink tree walk ----------------------------------------------
@@ -106,8 +150,9 @@ namespace Overlay {
         string brt = "?";
         if (l11 !is null && l11.LocalPage !is null && l11.LocalPage.MainFrame !is null)
             brt = VB(FindFrameById(l11.LocalPage.MainFrame, "Frame_AllBrowseTrack", 0));
-        int ps = PickerState(mm);
-        string picker = ps < 0 ? "-" : ("" + (ps / 4) + "/" + (ps % 4));
+        float relX = 0;
+        int ps = PickerState(mm, relX);
+        string picker = ps < 0 ? "-" : ("" + (ps / 4) + "/" + (ps % 4) + " relX=" + relX);
         string dest = (TilesFrame(mm) !is null) ? "  -> GRID"
                     : (ps >= 0 ? "  -> PICKER" : "  -> off");
         return "L12.vis=" + (l12 !is null && l12.IsVisible ? "1" : "0")
@@ -118,8 +163,11 @@ namespace Overlay {
     // ---- track-picker screen (the 10-thumbnail per-series/env view) --------
     // Not reachable as ManiaLink tiles; we detect series + environment and draw
     // markers at 10 fixed slots (S_Tp* rect). series+env packed as series*4+env,
-    // or -1 when this screen is not up.
-    int PickerState(CGameManiaAppTitle@ m) {
+    // or -1 when this screen is not up. relXOut is Frame_Selector's ML x
+    // relative to FrameAll_Buttons, for the Debug status line -- ignore it when
+    // the return is -1.
+    int PickerState(CGameManiaAppTitle@ m, float &out relXOut) {
+        relXOut = 0;
         if (m is null || m.UILayers.Length <= 11) return -1;
         auto l11 = cast<CGameUILayer>(m.UILayers[11]);
         if (l11 is null || l11.LocalPage is null || l11.LocalPage.MainFrame is null) return -1;
@@ -143,7 +191,12 @@ namespace Overlay {
 
         auto sel = FindFrameById(main, "Frame_Selector", 0);
         if (sel is null) return -1;
-        int col = int(Math::Round((sel.AbsolutePosition_V3.x - GRID_L) / TILE_W));
+        // Relative to FrameAll_Buttons's own (also panned) position, not a fixed
+        // ML origin -- the menu pans this whole tree depending on which
+        // series/environment was last browsed, so an absolute origin drifts.
+        float relX = sel.AbsolutePosition_V3.x - fab.AbsolutePosition_V3.x;
+        relXOut = relX;
+        int col = RoundToInt(relX / TILE_W);
         int env = col / 5;
         if (env < 0) env = 0;
         if (env > 3) env = 3;
@@ -268,7 +321,8 @@ void RenderCampaignOverlay() {
     auto tiles = Overlay::TilesFrame(m);
     if (tiles is null) {
         // Not the series grid -- try the per-series track-picker screen.
-        int ps = Overlay::PickerState(m);
+        float relX = 0;
+        int ps = Overlay::PickerState(m, relX);
         if (ps < 0) return;
         int series = ps / 4;
         int env = ps % 4;
@@ -288,6 +342,9 @@ void RenderCampaignOverlay() {
         return;
     }
 
+    float gridL = 0, gridR = 0, gridT = 0, gridB = 0;
+    if (!Overlay::GridBounds(tiles, gridL, gridR, gridT, gridB)) return;
+
     for (uint i = 0; i < tiles.Controls.Length; i++) {
         auto tile = cast<CGameManialinkFrame>(tiles.Controls[i]);
         if (tile is null || !tile.Visible || !tile.ControlId.StartsWith("Frame_Instance")) continue;
@@ -296,8 +353,8 @@ void RenderCampaignOverlay() {
         if (n < 1 || n > 200) continue;
 
         vec2 ml = tile.AbsolutePosition_V3;                       // ML top-left
-        vec2 tl = Overlay::ToScreen(ml.x, ml.y);
-        vec2 br = Overlay::ToScreen(ml.x + Overlay::TILE_W, ml.y - Overlay::TILE_H);
+        vec2 tl = Overlay::ToScreen(ml.x, ml.y, gridL, gridR, gridT, gridB);
+        vec2 br = Overlay::ToScreen(ml.x + Overlay::TILE_W, ml.y - Overlay::TILE_H, gridL, gridR, gridT, gridB);
         float x = Math::Min(tl.x, br.x);
         float y = Math::Min(tl.y, br.y);
         float w = Math::Abs(br.x - tl.x);

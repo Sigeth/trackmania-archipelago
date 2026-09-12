@@ -202,12 +202,27 @@ the online Openplanet docs describe the newer TM2020 build.
   - layer 11's own `IsVisible` / frame-visible flags are IDENTICAL between the
     series grid and the main menu — only `UILayers[12].IsVisible` /
     `Frame_AllBrowseTrack.Visible` disambiguate the three states.
+  - **The menu pans `FrameAll_Buttons` between screens (bug found 2026-09-12).**
+    Its ML-space position drifts depending on which series/environment was last
+    browsed in the picker — confirmed in-game: after visiting any picker other
+    than White Canyon, the series grid's tiles come back offset by roughly one
+    series width, and the picker's own environment detection (via
+    `Frame_Selector`'s x) always read back as Canyon regardless of the real
+    selection. Fix: the grid's ML bounding box is no longer a probe-measured
+    constant — `Overlay::GridBounds()` recomputes it every frame from the
+    currently-visible tiles' own `AbsolutePosition_V3` (self-calibrating,
+    immune to the pan), and `PickerState()` reads `Frame_Selector`'s x
+    *relative to* `FrameAll_Buttons`'s own (also panned) position instead of a
+    fixed origin. VERIFY in-game across all 4 environments and after
+    navigating grid → picker → grid a few times (only Canyon was ever
+    confirmed before this fix).
 - **ML → screen has no exposed transform** on this build (menu mouse coords
   `CGameManiaApp.MouseX/Y` are a *different* space — do not use them). Both grids
   are mapped into a screen rect given as window fractions (`S_GridL/T/R/B` for the
   200-grid, `S_TpL/T/R/B` for the picker), calibrated once by eye with the Debug
   "Overlay alignment" sliders + box-preview, and persisted. Re-tune per
-  resolution/aspect.
+  resolution/aspect — the ML-space side of the mapping is now self-calibrating
+  (see above), only the screen-fraction anchor still needs manual tuning.
 - **Writing Nadeo ManiaLink control fields does NOT stick.** Every tile has a
   hidden native `Quad_Locked` (`locked-2x2.dds`); setting `.Visible = true` on it
   executes but the menu's own script re-hides it the same frame, so it never
@@ -294,13 +309,21 @@ If you change one of these, change it on both sides.
 
 ## Open items
 
-- **Track-lock enforcement UX — done, verified in-game (1920×1080).**
-  `CampaignOverlay.as` marks locked tracks with a padlock on both the series grid
-  and the track picker (unlocked tracks get Bronze/Silver/Gold/Author pips for
-  checked medals); `GameState.LockedNow()` calls `BackToMainMenu()` when the
-  player loads a locked campaign map (`S_BlockLockedTracks`) — confirmed it lands
-  cleanly and writes no time. Only remaining: the grid-rect / picker-slot
-  calibration is per-resolution (re-tune with the Debug sliders on other setups).
+- **Track-lock enforcement UX — mostly done, one pan bug just fixed, pending
+  in-game re-verification.** `CampaignOverlay.as` marks locked tracks with a
+  padlock on both the series grid and the track picker (unlocked tracks get
+  Bronze/Silver/Gold/Author pips for checked medals); `GameState.LockedNow()`
+  calls `BackToMainMenu()` when the player loads a locked campaign map
+  (`S_BlockLockedTracks`) — confirmed it lands cleanly and writes no time.
+  2026-09-12: found the menu pans `FrameAll_Buttons` depending on which
+  series/environment was last browsed, which broke both the series grid
+  (tiles landed offset after visiting a picker) and the picker's own
+  environment detection (always read back as Canyon) — see the API-traps
+  section above for the fix (self-calibrating grid bounds + a pan-relative
+  `Frame_Selector` read). VERIFY in-game across all 4 environments and after
+  bouncing between grid and picker a few times. Grid-rect / picker-slot
+  *screen*-fraction calibration is still per-resolution (re-tune with the
+  Debug sliders on other setups).
 - **Goal condition — done.** One goal: `campaign_finish` fires at
   `LocationManager.FinishedCountAll() >= 200`. `ItemManager.CheckGoal()` warns
   if `slot_data.goal` is anything else.
