@@ -55,3 +55,13 @@ void Test_block_model() {
     AssertEq(BlockTrackNumber(0, 10), 0,  "k out of range");
     AssertEq(TierIndexForBlock(19), 4,    "block 19 tier");
 }
+
+void Test_IsTrapItem() {
+    Assert(IsTrapItem(TRAP_BLIND), "blind is a trap");
+    Assert(IsTrapItem(TRAP_GIANT_CAR), "giant car is a trap");
+    Assert(IsTrapItem(TRAP_TINY_CAR), "tiny car is a trap");
+    Assert(IsTrapItem(TRAP_RESPAWN), "respawn is a trap");
+    Assert(!IsTrapItem(PROGRESSIVE_MEDAL_ITEM), "progressive medal is not a trap");
+    Assert(!IsTrapItem("Nitro Boost"), "filler is not a trap");
+    Assert(!IsTrapItem(""), "empty string is not a trap");
+}

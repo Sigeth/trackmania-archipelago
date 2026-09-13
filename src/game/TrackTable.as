@@ -32,6 +32,19 @@ const array<string> MEDAL_SUFFIX = { "", "Bronze", "Silver", "Gold", "Author" };
 // ItemManager.RecomputeBlocks().
 const string PROGRESSIVE_MEDAL_ITEM = "Progressive Medal";
 
+// Trap item names (must match the apworld's TRAP_NAMES). Dispatched by
+// TrapManager.Trigger() from Main.as; see TrapManager.as for what each does
+// and why (car-scale is unverified end to end, blind and respawn are not).
+const string TRAP_BLIND     = "Blind Trap";
+const string TRAP_GIANT_CAR = "Giant Car Trap";
+const string TRAP_TINY_CAR  = "Tiny Car Trap";
+const string TRAP_RESPAWN   = "Respawn Trap";
+
+bool IsTrapItem(const string &in name) {
+    return name == TRAP_BLIND || name == TRAP_GIANT_CAR
+        || name == TRAP_TINY_CAR || name == TRAP_RESPAWN;
+}
+
 // "001".."200" from an official-campaign map -> 1..200; anything else -> 0.
 int CampaignNumber(const string &in mapName, const string &in authorLogin) {
     if (authorLogin != CAMPAIGN_AUTHOR_LOGIN

@@ -55,6 +55,22 @@ bool S_MedalSound = true;
 [Setting category="Behaviour" name="Medal voice line volume" min=0 max=1]
 float S_MedalSoundVolume = 0.6f;
 
+[Setting category="Behaviour" name="Blind Trap duration (seconds)" min=1 max=30]
+float S_BlindDurationSec = 2.0f;
+
+// Giant/Tiny Car Trap: confirmed NOT working in-game 2026-09-12 (car did not
+// visibly resize despite ScaleCarValue writing/restoring cleanly in the log --
+// see TrapManager.as / workspace CLAUDE.md open question 7). Not selected by
+// the apworld's trap pool until that's fixed; these settings are dormant.
+[Setting category="Behaviour" name="Giant Car Trap scale" min=1.0 max=6.0]
+float S_GiantCarScale = 4.0f;
+
+[Setting category="Behaviour" name="Tiny Car Trap scale" min=0.05 max=1.0]
+float S_TinyCarScale = 0.15f;
+
+[Setting category="Behaviour" name="Giant/Tiny Car Trap duration (seconds, currently unused -- see above)" min=2 max=30]
+float S_TrapDurationSec = 8.0f;
+
 [Setting category="Debug" name="Verbose protocol logging"]
 bool S_Trace = false;
 

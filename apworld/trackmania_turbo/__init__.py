@@ -39,10 +39,12 @@ sweep verify a seed is completable in the order the game actually allows,
 instead of treating every location as reachable from the start.
 
 Beyond the ~200 Progressive Medal items needed to clear all 20 blocks (plus a
-surplus), every remaining location holds a filler item. That filler pool is
-where traps / cosmetics eventually go (see docs/apworld-design.md Tier 3/4);
-none are implemented yet, so it's all `Nitro Boost` (a no-op) for now -- the
-slot count is already reserved for when that lands.
+surplus), every remaining location holds a filler item: `Nitro Boost` (a
+no-op), or -- when `trap_chance` (default 0, opt-in) rolls one -- a trap item,
+picked uniformly from TRAP_NAMES. Traps are `ItemClassification.trap` so they
+route through the normal filler-swap machinery; the Openplanet plugin's
+TrapManager.as is what actually applies them (car-scale is flagged there as
+unverified end to end -- everything else is confirmed).
 
 The strings here are a contract with the Openplanet plugin -- see the workspace
 CLAUDE.md "Naming conventions the .apworld must agree on".
@@ -88,6 +90,20 @@ PROGRESSIVE_MEDAL_NAME = "Progressive Medal"
 PROGRESSIVE_MEDAL_SURPLUS = 10
 
 FILLER_NAME = "Nitro Boost"
+
+# Trap item names -- must match the plugin's TrackTable.as TRAP_* constants.
+# The full universe (kept stable for ids / forward-compat even though three of
+# them are currently dormant -- see ACTIVE_TRAP_NAMES below).
+TRAP_NAMES: List[str] = ["Blind Trap", "Giant Car Trap", "Tiny Car Trap", "Respawn Trap"]
+
+# Trap names actually selected by create_items(). In-game testing 2026-09-12
+# confirmed only Blind Trap works: Giant/Tiny Car write+restore
+# CTrackManiaRace.ScaleCarValue cleanly (per the plugin log) but the car does
+# not visibly resize, and Respawn Trap's BackToMainMenu() effect was rejected
+# by the user ("respawn is not what I wanted" / "mark everything else not
+# working"). Restore entries here once TrapManager.as fixes them -- see the
+# plugin CLAUDE.md "Traps" open item / the traps-implemented memory.
+ACTIVE_TRAP_NAMES: List[str] = ["Blind Trap"]
 
 
 def _track_labels() -> List[str]:
@@ -161,6 +177,9 @@ def _build_item_table() -> Dict[str, int]:
     idx += 1
     table[PROGRESSIVE_MEDAL_NAME] = ITEM_ID_BASE + idx
     idx += 1
+    for trap_name in TRAP_NAMES:
+        table[trap_name] = ITEM_ID_BASE + idx
+        idx += 1
     return table
 
 
@@ -234,10 +253,12 @@ class TrackmaniaTurboWorld(World):
     # ---- items --------------------------------------------------------------
 
     def create_item(self, name: str) -> TrackmaniaTurboItem:
-        classification = (
-            ItemClassification.progression if name == PROGRESSIVE_MEDAL_NAME
-            else ItemClassification.filler
-        )
+        if name == PROGRESSIVE_MEDAL_NAME:
+            classification = ItemClassification.progression
+        elif name in TRAP_NAMES:
+            classification = ItemClassification.trap
+        else:
+            classification = ItemClassification.filler
         return TrackmaniaTurboItem(name, classification, ITEM_NAME_TO_ID[name], self.player)
 
     def get_filler_item_name(self) -> str:
@@ -255,9 +276,12 @@ class TrackmaniaTurboWorld(World):
                 "Trackmania Turbo: medal pool larger than the location count "
                 f"({len(pool)} > {len(self.real_location_names)})."
             )
-        # Reserved for traps/cosmetics later (docs/apworld-design.md Tier 3/4);
-        # not implemented yet, so it's all plain filler for now.
-        pool += [self.create_item(FILLER_NAME) for _ in range(remaining)]
+        trap_chance = self.options.trap_chance.value
+        for _ in range(remaining):
+            if trap_chance > 0 and self.random.randint(1, 100) <= trap_chance:
+                pool.append(self.create_item(self.random.choice(ACTIVE_TRAP_NAMES)))
+            else:
+                pool.append(self.create_item(FILLER_NAME))
         self.multiworld.itempool += pool
 
     # ---- regions & locations --------------------------------------------

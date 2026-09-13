@@ -1,6 +1,8 @@
+from BaseClasses import ItemClassification
 from Options import OptionError
 
 from . import TrackmaniaTurboTestBase
+from .. import ACTIVE_TRAP_NAMES, TRAP_NAMES
 
 
 class TestProgressiveDefault(TrackmaniaTurboTestBase):
@@ -8,9 +10,17 @@ class TestProgressiveDefault(TrackmaniaTurboTestBase):
 
     def test_id_map_universe(self):
         # The id map is the stable universe: 200 tracks x 4 medal tiers + 20
-        # block milestones + 5 tier milestones; items are filler + 1 medal item.
+        # block milestones + 5 tier milestones; items are filler + 1 medal item
+        # + the 4 trap items (trap_chance defaults to 0, so none land in the
+        # pool, but the id map always reserves them).
         self.assertEqual(len(self.world.location_name_to_id), 200 * 4 + 20 + 5)
-        self.assertEqual(len(self.world.item_name_to_id), 1 + 1)
+        self.assertEqual(len(self.world.item_name_to_id), 1 + 1 + len(TRAP_NAMES))
+
+    def test_no_traps_at_default_trap_chance(self):
+        # trap_chance defaults to 0 -- existing seeds shouldn't suddenly grow
+        # traps just from upgrading the apworld.
+        for item in self.multiworld.itempool:
+            self.assertNotIn(item.name, TRAP_NAMES)
 
     def test_instantiated_location_count(self):
         # Gold + Author per track, plus the 25 milestones.
@@ -71,6 +81,29 @@ class TestProgressiveMedalsRequired(TrackmaniaTurboTestBase):
     def test_milestones_still_present(self):
         self.multiworld.get_location("White Canyon Complete", 1)
         self.multiworld.get_location("Black Complete", 1)
+
+
+class TestTrapChanceMax(TrackmaniaTurboTestBase):
+    """trap_chance: 100 -- every non-medal filler slot rolls a trap.
+
+    Only ACTIVE_TRAP_NAMES (currently just Blind Trap) are actually selected --
+    Giant/Tiny Car and Respawn are confirmed not working in-game (2026-09-12)
+    and dormant until fixed, see the module docstring.
+    """
+
+    options = {"trap_chance": 100}
+
+    def test_all_filler_slots_become_traps(self):
+        non_medal = [i for i in self.multiworld.itempool if i.name != "Progressive Medal"]
+        self.assertTrue(non_medal)
+        for item in non_medal:
+            self.assertIn(item.name, ACTIVE_TRAP_NAMES)
+            self.assertEqual(item.classification, ItemClassification.trap)
+
+    def test_medal_item_still_progression(self):
+        medals = [i for i in self.multiworld.itempool if i.name == "Progressive Medal"]
+        self.assertTrue(medals)
+        self.assertTrue(all(i.advancement for i in medals))
 
 
 class TestRealMedalsNotImplemented(TrackmaniaTurboTestBase):

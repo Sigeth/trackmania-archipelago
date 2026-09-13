@@ -30,6 +30,15 @@ class ItemManager {
     // count changes -- the overlay queries this ~200x/frame.
     private array<bool> m_blockUnlocked;
 
+    // Trap items received but not yet applied. OnReceivedItems runs on the
+    // client coroutine (network thread); trap effects touch engine nods /
+    // draw overlays, so Main.as drains this once per game-thread Update() and
+    // hands each name to TrapManager.Trigger() -- the same cross-thread
+    // hand-off GameState.pendingFinish uses.
+    private array<string> m_pendingTraps;
+    array<string>@ get_PendingTraps() { return m_pendingTraps; }
+    void ClearPendingTraps() { m_pendingTraps.Resize(0); }
+
     ItemManager(ApClient@ client) {
         @m_client = client;
         m_blockUnlocked.Resize(BLOCK_COUNT);
@@ -45,6 +54,7 @@ class ItemManager {
     void Reset() {
         m_nextIndex = 0;
         m_itemCounts.DeleteAll();
+        m_pendingTraps.Resize(0);
         m_goalReported = false;
         m_requiredMedal = Medal::Gold;
         DefaultBlockThresholds();
@@ -140,8 +150,13 @@ class ItemManager {
         Log::Trace("ReceivedItems index=" + index + " count=" + arr.Length
                    + " (m_nextIndex=" + m_nextIndex + ")");
 
-        // index 0 == full replay (response to Sync). Reset local view first.
-        if (index == 0) {
+        // index 0 == full replay (response to Sync, or a reconnect's implicit
+        // replay) -- reset local view first. Traps must NOT re-fire from a
+        // replay: every reconnect (or a duplicate Sync some servers send
+        // alongside the connect response) would otherwise re-blind / re-scale
+        // the player for every trap they ever received, not just new ones.
+        bool isReplay = (index == 0);
+        if (isReplay) {
             m_itemCounts.DeleteAll();
             m_nextIndex = 0;
         } else if (index != m_nextIndex) {
@@ -153,14 +168,14 @@ class ItemManager {
 
         for (uint i = 0; i < arr.Length; i++) {
             int itemId = arr[i]["item"];
-            Apply(m_client.data.ItemName(itemId));
+            Apply(m_client.data.ItemName(itemId), isReplay);
         }
         m_nextIndex = index + arr.Length;
         RecomputeBlocks();
         CheckGoal();
     }
 
-    private void Apply(const string &in itemName) {
+    private void Apply(const string &in itemName, bool isReplay) {
         // Everything is counted (medals, filler, traps). Use the int64 Get/Set
         // overloads explicitly -- the generic dictionary ?&out path does not
         // reliably round-trip a 32-bit int here.
@@ -169,6 +184,8 @@ class ItemManager {
         count += 1;
         m_itemCounts.Set(itemName, count);
         Log::Info("Received " + itemName + " (x" + count + ")");
+
+        if (!isReplay && IsTrapItem(itemName)) m_pendingTraps.InsertLast(itemName);
     }
 
     // Goal: finish (any medal, or none) all 200 campaign tracks. Tracked

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from Options import Choice, PerGameCommonOptions
+from Options import Choice, PerGameCommonOptions, Range
 
 
 class UnlockStyle(Choice):
@@ -47,7 +47,24 @@ class MedalsRequired(Choice):
     default = 2
 
 
+class TrapChance(Range):
+    """Percent chance for each non-progression filler slot to become a trap
+    instead of a plain "Nitro Boost" filler.
+
+    0 (default) disables traps entirely. Traps are picked uniformly from:
+    Blind Trap, Giant Car Trap, Tiny Car Trap, Respawn Trap -- see the
+    Openplanet plugin's TrapManager.as for what each one does. Respawn Trap
+    abandons the current run back to the menu; the other three apply for a
+    few seconds and clear on their own.
+    """
+    display_name = "Trap Chance"
+    range_start = 0
+    range_end = 100
+    default = 0
+
+
 @dataclass
 class TrackmaniaTurboOptions(PerGameCommonOptions):
     unlock_style: UnlockStyle
     medals_required: MedalsRequired
+    trap_chance: TrapChance

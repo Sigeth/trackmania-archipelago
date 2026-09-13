@@ -32,6 +32,16 @@ void Update(float dt) {
     if (g_gameState is null || g_client is null) return;
 
     g_gameState.Update();
+    TrapManager::Update();
+
+    // Apply any traps this slot received. ItemManager queued the names on the
+    // client coroutine (network thread); the effects themselves touch engine
+    // nods / draw overlays, so they run here, on the game thread.
+    array<string>@ traps = g_client.items.PendingTraps;
+    if (traps.Length > 0) {
+        for (uint i = 0; i < traps.Length; i++) TrapManager::Trigger(traps[i]);
+        g_client.items.ClearPendingTraps();
+    }
 
     // Hand any finish event to the location manager, then celebrate it.
     if (g_gameState.pendingFinish !is null) {
@@ -63,6 +73,7 @@ void Update(float dt) {
 void Render() {
     RenderCampaignOverlay();
     MedalSplash::Render();
+    TrapManager::RenderBlind();
 }
 
 void OnDestroyed() { Shutdown(); }
