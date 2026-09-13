@@ -110,7 +110,14 @@ int main(int argc, char** argv) {
     engine->SetMessageCallback(asFUNCTION(MessageCallback), nullptr, asCALL_CDECL);
     engine->SetEngineProperty(asEP_ALLOW_MULTILINE_STRINGS, 1);
     engine->SetEngineProperty(asEP_ALLOW_IMPLICIT_HANDLE_TYPES, 0);
-    engine->SetEngineProperty(asEP_ALLOW_UNSAFE_REFERENCES, 1);   // Openplanet does; lets &out on primitives appear in stubs
+    // Real Openplanet does NOT allow this (confirmed 2026-09-13: a
+    // `uint &inout` plugin parameter passed check.ps1 clean but failed to
+    // compile in-game with "Only object types that support object handles
+    // can use &inout. Use &in or &out instead") -- keep this off so the
+    // checker rejects the same construct the real game does. &in/&out on
+    // primitives need no such flag; the generated stub has zero &inout
+    // usages on non-handle types.
+    engine->SetEngineProperty(asEP_ALLOW_UNSAFE_REFERENCES, 0);
     engine->SetEngineProperty(asEP_PROPERTY_ACCESSOR_MODE, 2);   // get_/set_ accessors, as Openplanet
     engine->SetEngineProperty(asEP_ALTER_SYNTAX_NAMED_ARGS, 1);
     RegisterOpRuntime(engine);
