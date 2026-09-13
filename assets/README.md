@@ -3,80 +3,60 @@
 Runtime files the plugin loads by plugin-relative path
 (`Audio::LoadSample("assets/…")`, `nvg::LoadTexture("assets/…")`).
 
-## Medal ceremony sounds — NATIVE ONLY, not shipped
+## Medal ceremony sounds — auto-fetched at runtime, nothing to extract
 
-`src/ui/MedalSplash.as` plays these on two triggers (`S_MedalSound`):
+`src/ui/MedalSplash.as` plays a medal voice line on a Gold-or-Author **finish**
+that armed a check (`S_MedalSound`; Author wins when the run also cleared
+Gold). A Bronze/Silver finish is silent.
 
-| File                             | Plays when                                             |
-|----------------------------------|--------------------------------------------------------|
-| `assets/voice-medal-bronze.wav`  | a **Bronze Medal** item is received from Archipelago   |
-| `assets/voice-medal-silver.wav`  | a **Silver Medal** item is received                    |
-| `assets/voice-medal-gold.wav`    | a **Gold Medal** item is received, **or** a finish earns a check with a Gold run |
-| `assets/voice-medal-author.wav`  | a finish earns a check with an Author run (Author wins when the run also cleared Gold) |
+The sound is Nadeo's own announcer audio. `src/game/VfsSound.as` reads it at
+runtime from `Documents\TrackmaniaTurbo\Media\Sounds\TMConsole\Voices\` — a
+per-player asset cache Nadeo's engine populates from the title pack as it's
+used during normal play, exposed via Openplanet's `Fids::` **User** drive
+(`Fids::GetUserFolder`). It walks that folder once and keyword-matches
+`bronze`/`silver`/`gold`/`author`; a tier with no dedicated file falls back to
+a shared `victory`/`record`/`podium`/`reward` cue. A tier with no match at all
+is silent — no synthesised fallback. Use the window's **Medal splash → "Scan
+game files for medal sounds"** button to see exactly what it found and
+resolved per tier.
 
-A Bronze/Silver *finish* is silent — those lines fire on item receipt only. When
-several medal items land in one server batch, only the highest tier speaks.
+This isn't the game's install directory (`Fids::GetGameFolder`, the "Game"
+drive) — that only reflects loose files literally shipped on disk, and
+Turbo's title-pack audio is never unpacked there. It took walking all 5 Fids
+drives in-game to find the real one; see `VfsSound.as`'s header comment for
+the full investigation trail, including why a `Fids::GetGame(fullPath)`
+single-file lookup and a compound-path `GetGameFolder` call both looked like
+dead ends before the User drive was tried.
 
-**These are gitignored (`/assets/*.wav`, `/assets/*.ogg`) and never committed** —
-they're Nadeo's copyrighted audio, ripped from the Turbo packs; each player
-extracts and drops in their own copy locally. Only this README is tracked.
+### Manual override
 
-These are the game's own announcer voice lines, extracted from the Turbo packs
-(44.1 kHz mono 16-bit PCM WAV — `Audio::LoadSample` reads them directly, `bext` /
-`JUNK` ancillary chunks and all). If a file is absent that tier's splash is
-silent — there is no placeholder / synthesised fallback (deliberate: the real
-sound or nothing). To swap names/format, edit `MedalSplash::SAMPLE_FILE`.
+If auto-fetch ever picks the wrong file (or a fresh profile hasn't played
+enough for the cache to be populated yet — untested how sparse it can be),
+drop a file at one of these paths; `MedalSplash::SAMPLE_FILE` checks them
+first and skips auto-fetch entirely when present:
 
-### Why the plugin can't just play the game's sound
+| File                             | Tier   |
+|-----------------------------------|--------|
+| `assets/voice-medal-bronze.wav`  | Bronze |
+| `assets/voice-medal-silver.wav`  | Silver |
+| `assets/voice-medal-gold.wav`    | Gold   |
+| `assets/voice-medal-author.wav`  | Author |
+
+**These are gitignored (`/assets/*.wav`, `/assets/*.ogg`) and never
+committed** — they're Nadeo's copyrighted audio. Only this README is tracked.
+44.1 kHz mono 16-bit PCM WAV loads directly via `Audio::LoadSample` (`bext` /
+`JUNK` ancillary chunks and all); `.ogg` works too. To swap the override
+names/format, edit `MedalSplash::SAMPLE_FILE`. To pull the same files by hand
+instead of relying on the cache, GbxPakExplorer
+(<https://schadocalex.github.io/GbxPakExplorer/>) can browse
+`TMTurbo.Title.Pack.Gbx → Media → Sounds → TMConsole → Voices` directly.
+
+### Why the plugin can't just call the game's sound API
 
 `CGameScriptHandlerPlaygroundInterface::PlayUiSound`,
 `CAudioScriptManager::PlaySoundLibrary` / `PlaySoundEvent*`,
 `CGameManiaplanetPlugin::PlaySound` are all ManiaScript-only (`"t":1`) — not
-callable from an Openplanet plugin. The sound data itself lives as
-`CPlugSound` / `CPlugFileSnd` inside the encrypted `NadeoPak` archives, which
-`Audio::LoadSample` cannot open. So the only way to get the native jingle is to
-extract the `.ogg` yourself and drop it in here.
-
-### Where to get the files
-
-Trackmania Turbo packs (Steam):
-`…\steamapps\common\Trackmania Turbo\Packs\` — all `NadeoPak` v18, encrypted
-headers, so plain unzip / `strings` won't work. Use a NadeoPak tool that has the
-Turbo keys built in:
-
-- **GbxPakExplorer** (browser, no install) — <https://schadocalex.github.io/GbxPakExplorer/>.
-  Drag a `.pak` in, browse the tree, download individual files.
-- **GBX.NET 2** (`Gbx.NET.PAK`) if you want to script it.
-
-Look in this order:
-
-1. `Packs\ManiaPlanet.pak` → **`Media\Sounds\…`** — the engine "library" sounds
-   that back `PlaySoundLibrary(ELibSound::…)`. `ELibSound` on this build is
-   `{Alert, ShowDialog, HideDialog, ShowMenu, HideMenu, Focus, Valid, Start,
-   Countdown, Victory, ScoreIncrease, Checkpoint}` — **`Victory*`** is the
-   medal / new-record jingle. Also grab `ScoreIncrease*` (the medal-pip count-up)
-   if you want a pre-roll.
-2. `Packs\TMTurbo.Title.Pack.Gbx` (the Turbo title, ~850 MB) → `Media\Sounds\…`
-   and `Media\Sound\…` — Turbo's campaign has its own reward ceremony; if there
-   are per-medal cues (bronze/silver/gold/author) they're here, likely named for
-   the medal or under a `Podium` / `Reward` / `EndRace` folder.
-3. `Packs\Resource.pak` → small, engine UI sounds — worth a look for
-   `Record` / `Finish`.
-
-`EUISound` (the `PlayUiSound` enum) has a `Record` and a `Finish` entry but **no
-Bronze/Silver/Gold** — Turbo's per-medal distinction comes from the title pack,
-not the core UI set. If you only find one "new record" sound, use it for all four
-names (copy the file 4×) — that already matches what the game does for most
-tiers.
-
-Turbo's audio is Ogg Vorbis; `CPlugFileSnd` entries point straight at `.ogg`
-blobs, so what you extract should be directly loadable. Trim/normalise if needed.
-
-### Alternative: let the plugin extract it at runtime
-
-Openplanet can read the decrypted VFS: `Fids::GetGame("Media\\Sounds\\…\\X.ogg")`
-→ `Fids::Extract(fid)` dumps the real bytes to disk, then
-`Audio::LoadSampleFromAbsolutePath(...)`. This needs the exact in-pack path
-string — not wired up yet; `MedalSplash.as` has a `TODO` where it would go. If
-you'd rather go this route than hunt through the pak, say so and it can be built
-with a one-time in-game folder scan to discover the path.
+callable from an Openplanet plugin, so the plugin still can't *trigger* the
+game's own ceremony (hence drawing its own banner in `MedalSplash.as`). Only
+reading the raw audio *data* at runtime was ever in question, and that's what
+`VfsSound.as` now does successfully via the User-drive cache.

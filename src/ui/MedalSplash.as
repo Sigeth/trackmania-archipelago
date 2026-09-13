@@ -7,11 +7,14 @@
 // ManiaScript-only). So we draw our own: a centred banner for ~3 s on every
 // campaign finish.
 //
-// SOUND is the game's own extracted medal voice lines (native-only, not bundled;
-// see assets/README.md), routed through PlayTierSound() on a Gold-or-Author
-// FINISH that armed a check -> Gold / Author voice line (Trigger(); Author
-// wins when the run cleared both). A missing file just means that tier is
-// silent -- no synthesised fallback.
+// SOUND is the game's own medal voice lines, auto-fetched at runtime by
+// VfsSound.as (confirmed working in-game 2026-09-13, Gold line heard on a
+// real trigger) -- see that file's header for the full investigation trail.
+// A manual assets/voice-medal-*.wav override (SAMPLE_FILE below;
+// assets/README.md) still wins when present. Routed through
+// PlayTierSound() on a Gold-or-Author FINISH that armed a check -> Gold /
+// Author voice line (Trigger(); Author wins when the run cleared both). No
+// match found means that tier is silent -- no synthesised fallback.
 //
 // There used to be a second trigger (a received Bronze/Silver/Gold medal ITEM
 // playing that tier's line), tied to the old per-grade unlock economy. The
@@ -54,46 +57,43 @@ namespace MedalSplash {
     SplashInfo@ m_active = null;
     uint64 m_startMs = 0;
 
-    // Per-tier sound file, indexed by the Medal enum (1 Bronze .. 4 Author).
-    // Index 0 (no medal / bare finish) never plays a sound -- a bare finish does
-    // not arm a check. Drop the game's extracted ceremony .ogg here under these
-    // names; .ogg and .wav both load (see assets/README.md for what to extract).
-    // A missing file just means that tier is silent -- no fallback, by design.
-    array<string> SAMPLE_FILE = {
-        "",
-        "assets/voice-medal-bronze.wav",
-        "assets/voice-medal-silver.wav",
-        "assets/voice-medal-gold.wav",
-        "assets/voice-medal-author.wav"
-    };
+    // Optional per-tier manual override, indexed by the Medal enum (1 Bronze
+    // .. 4 Author). Index 0 (no medal / bare finish) never plays a sound -- a
+    // bare finish does not arm a check. Empty by default: the plugin now
+    // auto-fetches the game's own voice lines via VfsSound (see that file),
+    // so hand-extracting is optional -- drop a file at one of these paths
+    // only if you want to override what auto-fetch finds (see
+    // assets/README.md for the old manual-extraction path/names).
+    array<string> SAMPLE_FILE = { "", "", "", "", "" };
     array<Audio::Sample@> m_samples(5);
     array<bool> m_sampleTried(5, false);
 
-    // TODO(native-sound-auto): instead of the player extracting the .ogg by hand,
-    // pull it from the decrypted VFS on first use:
-    //   auto fid = Fids::GetGame("Media\\Sounds\\...\\Victory.ogg");
-    //   if (fid !is null && Fids::Extract(fid))
-    //       @m_samples[mi] = Audio::LoadSampleFromAbsolutePath(<extracted path>);
-    // Blocked only on the exact in-pack path string (see assets/README.md).
-
-    // Load (once) the voice line for tier `mi` (1..4), or null if the file is
-    // absent. No fallback: native sound or silence.
+    // Load (once) the voice line for tier `mi` (1..4): a manual override file
+    // if one is present, else auto-fetched from the game's own decrypted
+    // files (VfsSound), else null. No synthesised fallback: native sound or
+    // silence.
     Audio::Sample@ SampleFor(int mi) {
         mi = Math::Clamp(mi, 0, 4);
-        if (mi == 0 || SAMPLE_FILE[mi] == "") return null;
+        if (mi == 0) return null;
         if (!m_sampleTried[mi]) {
             m_sampleTried[mi] = true;
-            // Audio::LoadSample throws (not null) when the file is absent.
-            try {
-                @m_samples[mi] = Audio::LoadSample(SAMPLE_FILE[mi]);
-            } catch {
-                @m_samples[mi] = null;
-            }
+            @m_samples[mi] = LoadTierSample(mi);
             if (m_samples[mi] is null)
-                Log::Trace("medal splash: " + SAMPLE_FILE[mi]
-                           + " not present -- tier " + mi + " silent");
+                Log::Trace("medal splash: no sound found for tier " + mi + " -- silent");
         }
         return m_samples[mi];
+    }
+
+    Audio::Sample@ LoadTierSample(int mi) {
+        if (SAMPLE_FILE[mi] != "") {
+            // Audio::LoadSample throws (not null) when the file is absent.
+            try {
+                return Audio::LoadSample(SAMPLE_FILE[mi]);
+            } catch {
+                Log::Trace("medal splash: override " + SAMPLE_FILE[mi] + " not present, auto-fetching");
+            }
+        }
+        return VfsSound::SampleForTier(mi);
     }
 
     // Play the medal voice line for `tier` (Medal enum 1..4), on a gold+ finish

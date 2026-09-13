@@ -36,6 +36,33 @@ void RenderInterface() {
             if (UI::Button("Gold")) MedalSplash::PlayTierSound(int(Medal::Gold));
             UI::SameLine();
             if (UI::Button("Author")) MedalSplash::PlayTierSound(int(Medal::Author));
+            UI::Separator();
+            UI::TextDisabled("Sound source: auto-fetched from the game's runtime");
+            UI::TextDisabled("asset cache (Documents\\TrackmaniaTurbo\\); a manual");
+            UI::TextDisabled("assets/*.wav override still wins if present.");
+            if (UI::Button("Scan game files for medal sounds")) VfsSound::EnsureScanned(true);
+            UI::TextWrapped(VfsSound::DebugSummary());
+        }
+        if (UI::CollapsingHeader("Traps")) {
+            UI::TextWrapped("Fires the real effect immediately, as if the item had"
+                             + " just arrived -- useful without a live server.");
+            if (UI::Button("Blind")) TrapManager::Trigger(TRAP_BLIND);
+            UI::TextDisabled("^ only one confirmed working (2026-09-12). The apworld's");
+            UI::TextDisabled("trap pool only sends this one until the rest are fixed.");
+            UI::Separator();
+            UI::TextDisabled("Confirmed NOT working -- kept for debugging only:");
+            if (UI::Button("Giant car (broken)")) TrapManager::Trigger(TRAP_GIANT_CAR);
+            UI::SameLine();
+            if (UI::Button("Tiny car (broken)")) TrapManager::Trigger(TRAP_TINY_CAR);
+            UI::TextDisabled("ScaleCarValue writes/restores cleanly in the log but the");
+            UI::TextDisabled("car does not visibly resize -- needs fresh investigation.");
+            if (UI::Button("Respawn (wrong effect)")) TrapManager::Trigger(TRAP_RESPAWN);
+            UI::TextDisabled("Abandons the run to the main menu -- not a real respawn.");
+            UI::Separator();
+            UI::TextDisabled("Diagnostic only -- not a trap item, no server needed:");
+            if (UI::Button("FOV warp (diagnostic)")) TrapManager::StartFovWarpDiagnostic();
+            UI::TextDisabled("Tests whether the same CTrackManiaRace accessor can drive");
+            UI::TextDisabled("ANY visible effect -- informs the car-scale investigation.");
         }
         if (UI::CollapsingHeader("Overlay alignment")) {
             UI::TextWrapped(Overlay::DebugStatus());

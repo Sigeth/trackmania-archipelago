@@ -287,7 +287,8 @@ the online Openplanet docs describe the newer TM2020 build.
 | `src/ui/Notify.as` | `UI::ShowNotification` toasts, raised from `ApClient.OnPrintJson` for `ItemSend`/`ItemCheat` routes touching this slot — server's own sentence with our slot as "you"/"You" (`S_Notifications`) |
 | `src/Main.as` `Render()` | The plugin's single `Render()` — `RenderCampaignOverlay()` then `MedalSplash::Render()` |
 | `src/ui/CampaignOverlay.as` | `RenderCampaignOverlay()` — nvg lock / medal-pip markers on the series grid *and* the per-series track picker |
-| `src/ui/MedalSplash.as` | Centred foreground-draw-list medal banner on every campaign finish + the game's extracted announcer voice lines (`assets/voice-medal-*.wav`) on a Gold/Author finish that armed a check |
+| `src/game/VfsSound.as` | Auto-fetches the game's own announcer voice lines at runtime from the player's `Documents\TrackmaniaTurbo\` asset cache (`Fids::` **User** drive), keyword-matched per medal tier |
+| `src/ui/MedalSplash.as` | Centred foreground-draw-list medal banner on every campaign finish + a medal voice line (via `VfsSound`, or a manual `assets/voice-medal-*.wav` override) on a Gold/Author finish that armed a check |
 
 ## Naming contract with the `.apworld`
 
@@ -363,23 +364,73 @@ If you change one of these, change it on both sides.
   `RaceState == Finished` (fallback: `CGamePlaygroundScript.Solo_NewRecordSequenceInProgress`).
 - **`wss://` path.** Only `ws://` (local) is exercised so far; test TLS +
   fragmented inbound frames against `archipelago.gg`.
-- **Medal splash — needs an in-game look.** `MedalSplash.as` shows a centred
-  banner on every campaign finish (track + earned medal, plus "Checked: …" /
-  milestone lines when connected). Sound is the game's own extracted announcer
-  voice lines (`assets/voice-medal-{bronze,silver,gold,author}.wav`), **native-only,
-  not shipped** — a missing file just means that tier is silent, no synthesised
-  fallback (user decision). All sound goes through `MedalSplash::PlayTierSound()`,
-  which MUST run on the game thread. One trigger: a **Gold or Author finish
-  that armed a check** → Gold / Author line (Author wins when the run cleared
-  both; `SplashInfo.medal` is already the single best tier). Bronze/Silver
-  finishes are silent. (There used to be a second trigger — a received
-  Bronze/Silver/Gold medal *item* playing that tier's line — but the apworld
-  now sends a single ungraded `"Progressive Medal"` item, so there's no tier to
-  announce on receipt; dropped until `unlock_style: real_medals` ships.)
-  The game's own jingle can't be triggered directly (`PlayUiSound` /
-  `PlaySoundLibrary` are ManiaScript-only, pak audio is `CPlugFileSnd`);
-  `assets/README.md` has the extraction targets. `Audio::LoadSample` throws on a
-  missing file so every load is try/catch-guarded. VERIFY placement/legibility at
+- **Medal splash — needs an in-game look; sound auto-fetch CONFIRMED WORKING
+  end-to-end (2026-09-13, Gold voice line audibly heard on a real trigger).**
+  `MedalSplash.as` shows a centred banner on every campaign finish (track +
+  earned medal, plus "Checked: …" / milestone lines when connected).
+  `src/game/VfsSound.as` pulls the medal voice lines from Openplanet's
+  `Fids::` API at runtime, so a player doesn't need to hand-extract
+  `assets/voice-medal-*.wav` with an external NadeoPak tool. Getting there
+  took a real investigation (full trail in `VfsSound.as`'s header comment) —
+  three layered wrong guesses, not one:
+  1. `Fids::GetGameFolder("")` (the **Game** drive) is the literal on-disk
+     install dir (`GameData\`, `Packs\`, ...), not a merged pak view —
+     `GameData\Media\Sounds` resolves but is completely empty.
+  2. The **User** drive (`Fids::GetUserFolder("")`, →
+     `Documents\TrackmaniaTurbo\`) does list 90+ real-looking entries under
+     `Media\Sounds\TMConsole\Voices\` (`voice-carhit-*`, `checkpoint`,
+     `voice-medal-*`, ...), of the 5 Fids drives only User had it — but
+     those entries are virtual reference records (`.FullFileName ==
+     "<virtual>"`, `.ByteSize` 38–539 bytes even for `voice-carhit-*`, which
+     definitely plays on every collision), not the audio payload.
+  3. `Fids::Extract(fid)` reports success against them, but
+     `Fids::GetFullPath(fid)` is USELESS here — confirmed it returns just
+     the containing folder, no filename, no drive letter. Guessing the real
+     extracted-to location every plausible way (the scan's own folder path,
+     `IO::FromAppFolder`/`FromDataFolder` combined with the fid's own state)
+     all failed `IO::FileExists` too.
+  **The actual answer**, found by searching GitHub for other Openplanet
+  plugins' real `Fids::Extract` usage (`AurisTFG/tm-fid-loader`'s
+  `FidWrapper.as`): extraction lands under Openplanet's own **Data folder**,
+  in an `Extract\` subfolder mirroring the drive-relative path with no drive
+  name in the string — `IO::FromDataFolder("Extract\" + <path> +
+  fid.FileName)`. That's what `VfsSound::ExtractedPath()` builds now,
+  confirmed with `IO::FileExists` before wiring it into the real pipeline.
+  `VfsSound::EnsureScanned()` walks `SCAN_PATHS`
+  (`User\Media\Sounds\TMConsole\Voices`) one path segment at a time via
+  `FindChild()` matching child-folder names against
+  `Fids::UpdateTree()`-populated `.Trees` (`GetGameFolder`/`GetUserFolder`
+  don't resolve a compound path for an unwalked subtree either), keeping
+  each leaf's `CSystemFidFile@` handle directly from `.Leaves` and building
+  its `ExtractedPath()` alongside it as the walk recurses. Keyword-matches
+  `bronze`/`silver`/`gold`/`author` per tier, falling back to a shared
+  `victory`/`record`/`podium`/`reward` cue for any tier with no dedicated
+  file. A manual `assets/voice-medal-{bronze,silver,gold,author}.wav`
+  override (`MedalSplash::SAMPLE_FILE`) still wins when present.
+  `Window.as`'s "Medal splash" section has a "Scan game files for medal
+  sounds" button + `VfsSound::DebugSummary()` readout. The one-off "Probe
+  ..." functions used during the 2026-09-13 investigation (VFS drives/roots,
+  file header hex dump, extract location) were removed once the real
+  mechanism was confirmed and wired in -- re-derive similar probes from this
+  file's own trail (above) if a future Openplanet update ever breaks this
+  again. **VERIFY in-game:** only Gold has been audibly confirmed so
+  far — spot-check Bronze/Silver/Author too (keyword matching is a
+  heuristic, and `voice-medal-{bronze,silver,author}.wav` were assumed to
+  exist by naming convention, not individually confirmed), and check
+  behaviour on a fresh profile that hasn't played enough for the User-drive
+  cache to be populated yet (the manual override is the fallback for that
+  case). All sound goes through `MedalSplash::PlayTierSound()`, which MUST
+  run on the game thread — `VfsSound`'s Fids::/Audio:: calls inherit that
+  same rule. One trigger: a **Gold or Author finish that armed a check** →
+  Gold /
+  Author line (Author wins when the run cleared both; `SplashInfo.medal` is
+  already the single best tier). Bronze/Silver finishes are silent. (There
+  used to be a second trigger — a received Bronze/Silver/Gold medal *item*
+  playing that tier's line — but the apworld now sends a single ungraded
+  `"Progressive Medal"` item, so there's no tier to announce on receipt;
+  dropped until `unlock_style: real_medals` ships.) The game's own jingle
+  can't be triggered directly (`PlayUiSound` / `PlaySoundLibrary` are
+  ManiaScript-only). VERIFY placement/legibility at
   1920×1080 and on the in-map results screen; "Test medal splash" + per-tier
   "Audition voice lines" buttons are in the window's "Medal splash" section.
 - Debug traces in `GameState` / `LocationManager` / `ItemManager` / `Transport`
@@ -416,10 +467,41 @@ If you change one of these, change it on both sides.
   `EnableScaleCar` for diagnostic `Log::Trace`, never writes it. **Takeaway:
   turbo.openplanet.dev tells you a member exists and its shape, not whether
   Openplanet lets scripts write it — always cross-check `OpenplanetTurbo.json`'s
-  `"c"` flag before coding against a property found there.** `ScaleCarValue`
-  itself remains confirmed writable (no `"c"` flag, range `[0.1, 10]`) and
-  still has no visible in-game effect for an unknown reason — dead end for
-  now; see the header comment in `TrapManager.as`.
+  `"c"` flag before coding against a property found there.** (Also caught
+  `BonusCarScale`/`BonusCarScaleAccel` as `"c":1` despite showing unflagged on
+  the site.) `ScaleCarValue` itself remains confirmed writable (no `"c"`
+  flag, range `[0.1, 10]`) and still has no visible in-game effect on its
+  own — a second, JSON-confirmed lead was then tried: `ScaleDuration` (uint)
+  / `ScaleSpeedSec` (float) sit next to it on `CTrackManiaRace`, both
+  genuinely writable, on the hypothesis that the mesh-scale interpolation
+  only runs while a transition window is open (`ScaleDuration > 0`) and
+  every prior attempt left it at its untouched default. `StartCarScale()`
+  set both before `ScaleCarValue` and restored all three on expiry —
+  confirmed via trace log the values round-tripped exactly as designed.
+  **User confirmed live: still no visible resize for either trap. This lead
+  is closed too.** `CMotionTrackMobilScale.ScaleValue` is also genuinely
+  writable per the dump but is a confirmed dead end — nothing in the whole
+  API returns/holds an instance of it, and the one plausible path
+  (`CGameMobil.SceneMobil.MotionSolid`, typed `CMotion@`) is a structurally
+  unrelated class hierarchy from `CMotionTrack`, so casting it only ever
+  yields null. **Every writable, reachable scale-adjacent field found on
+  `CTrackManiaRace`/`CTrackManiaRaceRules` has now been tried or ruled out.**
+  **FOV warp diagnostic, same day — decisive negative result.** A debug-only
+  button (`TrapManager::StartFovWarpDiagnostic()`, Window "Traps" section)
+  multiplies the live `CTrackManiaRace.FovY` by 2.5x via the same accessor
+  chain, to test whether the chain drives *any* visible effect at all (not
+  just scale). Trace confirmed a huge swing (`FovY 65 -> 162.5`) applied and
+  restored cleanly, fired twice. **User confirmed live both times: nothing
+  visibly changed.** A swing that large would be unmissable if it reached
+  the renderer — so `app.CurrentPlayground.Interface -> CTrackManiaRaceInterface
+  -> .Race` very likely never reaches the object actually driving the
+  rendered frame in solo campaign play. This was never scale-specific.
+  Untested guess: `CTrackManiaRace` is a base class inherited by
+  `CTrackManiaRaceNew`/`CTrackManiaRace1P`/`CTrackManiaRaceNet`; solo may run
+  through a subclass with its own separate render path. **Don't trust this
+  accessor chain for a future visual effect without first sanity-checking it
+  reflects live state** (e.g. does `LapCount` actually change?). See the
+  header comment in `TrapManager.as` for the full trail.
   Also note: `tools/as/gen_stubs.py` used to ignore the `"c"` flag when
   generating the AngelScript type-check stub, so `tools/as/check.ps1` passed
   this write clean — the compile error was only caught by an actual in-game
