@@ -109,6 +109,45 @@
 // it. No further engine-nod-based visual-effect trap idea is currently
 // planned via this chain.
 //
+// GITHUB SEARCH (2026-09-14): searched for any real Openplanet plugin that
+// implements a working car-resize effect, per the "check real plugins when
+// stuck" rule. Zero hits for any Openplanet AngelScript plugin doing this.
+// The only real code that flips `EnableScaleCar`/drives the mini-car/big-car
+// mechanic is Nadeo's/community **ManiaScript mode scripts** (server-side
+// `.Script.txt`, e.g. Plambt/TM-SMScripts's `KEKLRounds.Script.txt`,
+// `Rounds-Chaos.Script.txt`, BigBang1112/nadeo-envimix's
+// `EnvimixTimeAttack.Script.txt`) -- a completely different, server-
+// authoritative scripting environment (the mode script that defines and
+// runs the match) with no relationship to Openplanet's client-side
+// AngelScript plugin API. Those scripts only ever set the `EnableScaleCar`/
+// `EnableBonusEvents` flags; the actual scale-application logic lives inside
+// Nadeo's own built-in base mode scripts (`Modes/TrackMania/Rounds.Script.txt`
+// etc., shipped inside the game, not in any of these repos) and is driven by
+// that mode's own bonus-car-spawn event system -- not a per-frame property a
+// plugin could piggyback on for an already-running solo campaign race. One
+// real Openplanet plugin found reading `CTrackManiaRaceRules.EnableScaleCar`
+// at all -- kalleruud/tm-webhooks-plugin's `TurboGameAdapter.as` -- only
+// *reads* it (to report round type in a webhook payload), never writes it,
+// consistent with our own `"c":1` read-only finding. **This closes the
+// Giant/Tiny Car investigation with outside confirmation: not just "we
+// couldn't make it work," but "the mechanism this trap wanted doesn't exist
+// in any form Openplanet plugins can reach at all" -- it's architecturally a
+// mode-script feature, not a client-plugin one.
+//
+// FOLLOW-UP CHECKED AND CLOSED (2026-09-14): swapping the active mode script
+// to one that already implements car-scale (e.g. KEKLRounds.Script.txt)
+// instead of forcing fields on the campaign's own script. openplanet-nl/
+// turbo-scripts -- the Openplanet team's own repo dumping Turbo's original
+// .Script.txt files -- states in its README that running a custom menu/mode
+// script requires a patched game. Mode-script loading/swapping is gated
+// behind modifying the game binary, outside what an Openplanet AngelScript
+// plugin (sandboxed, unmodified exe) can do. The writable mode-script fields
+// found in OpenplanetTurbo.json (CTrackManiaNetworkServerInfo.
+// NextScriptRelName / NextGameMode_Script) are dedicated-server host config,
+// never consulted by offline solo campaign; CGameCtnChallengeGroup.
+// ModeScriptName is static campaign metadata, not a live switch. No
+// script-swap workaround exists for any future trap idea either.**
+//
 // Blind trap: a full-screen black nvg rect for S_BlindDurationSec, drawn from
 // Main.as's Render() -- the exact technique MedalSplash.as already uses. No
 // engine nod involved. **CONFIRMED WORKING** in-game 2026-09-12.

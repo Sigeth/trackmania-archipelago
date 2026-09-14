@@ -523,3 +523,19 @@ If you change one of these, change it on both sides.
   "Traps" debug buttons (fire the real effect immediately, broken ones
   labelled as such) are in the window. `trap_chance` defaults to 0 in the
   apworld, so no seed grows traps without the player opting in.
+  **GitHub search closes this investigation for good (2026-09-14).** Searched
+  for any real Openplanet plugin implementing a working car-resize trap.
+  Zero hits. The only real-world code touching `EnableScaleCar`/car-scale is
+  **ManiaScript mode scripts** (server-side `.Script.txt` files that define a
+  game mode, e.g. `Plambt/TM-SMScripts`'s `KEKLRounds.Script.txt` /
+  `Rounds-Chaos.Script.txt`, `BigBang1112/nadeo-envimix`'s
+  `EnvimixTimeAttack.Script.txt`) — an entirely different, server-
+  authoritative scripting environment with no path from an Openplanet client
+  plugin. Those scripts only set the flag; the actual scale-application logic
+  lives in Nadeo's own built-in base mode scripts (shipped with the game, not
+  in any repo) and is driven by that mode's own bonus-event system. The one
+  real Openplanet plugin found touching `EnableScaleCar` at all
+  (`kalleruud/tm-webhooks-plugin`'s `TurboGameAdapter.as`) only reads it,
+  never writes it. Conclusion: this isn't just "couldn't make it work" — the
+  mechanism doesn't exist in any form reachable from an Openplanet plugin at
+  all. See `TrapManager.as`'s header comment for the full citation trail.
